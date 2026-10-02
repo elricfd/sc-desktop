@@ -1,14 +1,28 @@
 import { app, BrowserView, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type ElectronStore from 'electron-store';
 import { spawn, type ChildProcess } from 'child_process';
-import { statSync } from 'fs';
-import { delimiter, join } from 'path';
+import { copyFileSync, rmSync, statSync } from 'fs';
+import { delimiter, dirname, extname, join, relative } from 'path';
 import { createInterface } from 'readline';
 import type { ThemeColors } from '../utils/colorExtractor';
 import { applyNavigationPolicy } from '../utils/navigationPolicy';
 import { appUrl, cspMetaTag, provideDocument } from '../utils/appProtocol';
 import { markTrustedSender, trustedHandle, trustedOn } from '../utils/ipcGuard';
-import { authConfig, buildArgs, DEFAULT_TEMPLATE, findYtDlp, parseLine, searchDirs, skipReason } from '../utils/ytdlp';
+import {
+    authConfig,
+    buildArgs,
+    DEFAULT_FOLDER,
+    DEFAULT_TEMPLATE,
+    findYtDlp,
+    hasFfmpeg,
+    isSet,
+    parseLine,
+    parsePlaylist,
+    playlistArgs,
+    searchDirs,
+    skipReason,
+    type PlaylistInfo,
+} from '../utils/ytdlp';
 
 const isMac = process.platform === 'darwin';
 const HEADER_HEIGHT = 32;
@@ -117,74 +131,168 @@ export class DownloadManager {
             return;
         }
 
-        const child = spawn(
-            binary,
-            buildArgs(item.url, {
-                folder: downloadFolder(this.store),
-                template: this.store.get('downloadTemplate', DEFAULT_TEMPLATE) as string,
-                auth: !!auth,
-            }),
-            {
-                env: { ...process.env, PATH: searchDirs().join(delimiter) },
-                stdio: ['pipe', 'pipe', 'pipe'],
-                windowsHide: true,
-            },
-        );
-        // a write to a yt-dlp that failed to start must not take the app down; 'error' below reports it
-        child.stdin.on('error', () => {});
-        child.stdin.end(auth ?? '');
-        this.processes.set(item.id, child);
-        item.status = 'downloading';
+        // on Windows yt-dlp also finds an ffmpeg that sits next to it
+        const tags = hasFfmpeg([...searchDirs(), dirname(binary)]);
 
-        createInterface({ input: child.stdout }).on('line', (line) => {
-            const parsed = parseLine(line);
-            if (!parsed || item.status === 'cancelled') return;
+        const folder = downloadFolder(this.store);
+        const playlistFolder = isSet(item.url)
+            ? (this.store.get('downloadPlaylistFolder', DEFAULT_FOLDER) as string).trim()
+            : '';
+        // what the first run of an album or playlist finds out, see `playlistArgs`
+        let playlist: PlaylistInfo = { year: null, cover: null };
 
-            if ('file' in parsed) {
-                item.file = parsed.file;
-                item.files += 1;
-                try {
-                    item.size += statSync(parsed.file).size;
-                } catch {
-                    // moved or deleted already; the size is only for display
-                }
-            } else {
-                const { status, title, ...progress } = parsed.progress;
-                Object.assign(item, progress);
-                if (title) item.title = title;
-                // yt-dlp reports 'finished' once the bytes are in; conversion and tagging follow
-                item.status = status === 'finished' ? 'processing' : 'downloading';
-            }
-            this.changed();
-        });
-
-        createInterface({ input: child.stderr }).on('line', (line) => {
-            const reason = skipReason(line);
-            if (reason) item.skipped.push(reason);
-            else if (line.startsWith('ERROR:')) item.error = line.slice('ERROR:'.length).trim();
-        });
+        // the files so far, the playlist positions they are for, and how many positions there are
+        const files = new Set<string>();
+        const saved = new Set<number>();
+        let count: number | null = null;
+        let retried = false;
 
         // 'error' (could not start) and 'close' can both fire; whichever comes first settles it
-        const settle = (error: string) => {
-            if (!this.processes.delete(item.id)) return;
+        const settle = (child: ChildProcess, error: string) => {
+            if (this.processes.get(item.id) !== child) return;
+            this.processes.delete(item.id);
             if (item.status !== 'cancelled') {
                 item.status = error ? 'error' : 'done';
                 item.error = error;
             }
+            // measured at the end: a file is reported before its cover and tags are added to it
+            item.size = 0;
+            for (const file of files) {
+                try {
+                    item.size += statSync(file).size;
+                } catch {
+                    // moved or deleted already; the size is only for display
+                }
+            }
+            // The cover goes next to the tracks, unless they went straight into the download folder,
+            // where the next album's cover would take its place.
+            const [first] = files;
+            try {
+                if (playlist.cover && first && relative(folder, dirname(first))) {
+                    copyFileSync(playlist.cover, join(dirname(first), `cover${extname(playlist.cover)}`));
+                }
+                if (playlist.cover) rmSync(playlist.cover, { force: true });
+            } catch {
+                // the tracks are saved, and each carries its own cover
+            }
             this.runQueued();
         };
-        child.on('error', (error) => settle(error.message));
-        child.on('close', (code) => {
-            if (code === 0 || item.error) return settle(item.error);
-            // tracks yt-dlp could not have are skipped, not failed: the rest of an album or playlist still counts
-            if (!item.skipped.length) return settle(`yt-dlp exited with code ${code}`);
-            if (item.files) return settle('');
-            const reasons = [...new Set(item.skipped)].join(', ');
-            settle(
-                item.skipped.length > 1
-                    ? `None of the ${item.skipped.length} tracks can be downloaded (${reasons})`
-                    : `This track can't be downloaded (${reasons})`,
+
+        const start = (args: string[]) => {
+            const child = spawn(binary, args, {
+                env: { ...process.env, PATH: searchDirs().join(delimiter) },
+                stdio: ['pipe', 'pipe', 'pipe'],
+                windowsHide: true,
+            });
+            // a write to a yt-dlp that failed to start must not take the app down; 'error' below reports it
+            child.stdin.on('error', () => {});
+            child.stdin.end(auth ?? '');
+            this.processes.set(item.id, child);
+            item.status = 'downloading';
+            child.on('error', (error) => settle(child, error.message));
+            return child;
+        };
+
+        // `items` limits a second pass to the playlist positions the first left without a file
+        const pass = (items?: number[]) => {
+            const child = start(
+                buildArgs(item.url, {
+                    folder,
+                    template: this.store.get('downloadTemplate', DEFAULT_TEMPLATE) as string,
+                    playlistFolder,
+                    year: playlist.year,
+                    auth: !!auth,
+                    items,
+                    tags,
+                }),
             );
+
+            createInterface({ input: child.stdout }).on('line', (line) => {
+                const parsed = parseLine(line);
+                if (!parsed || item.status === 'cancelled') return;
+
+                if ('file' in parsed) {
+                    item.file = parsed.file;
+                    // a set, because a second pass over a single track reports its file again
+                    files.add(parsed.file);
+                    item.files = files.size;
+                    if (parsed.index) saved.add(parsed.index);
+                    // a second pass counts only the tracks it was asked for
+                    if (!retried) count = parsed.count ?? count;
+                } else {
+                    const { status, title, ...progress } = parsed.progress;
+                    if (retried) progress.count = item.count;
+                    else count = progress.count ?? count;
+                    Object.assign(item, progress);
+                    if (title) item.title = title;
+                    // yt-dlp reports 'finished' once the bytes are in; conversion and tagging follow
+                    item.status = status === 'finished' ? 'processing' : 'downloading';
+                }
+                this.changed();
+            });
+
+            // one ERROR line per track yt-dlp gave up on; it carries on with the rest of an album or playlist
+            createInterface({ input: child.stderr }).on('line', (line) => {
+                // a file that could not take its cover or tags is saved all the same
+                if (!line.startsWith('ERROR:') || line.startsWith('ERROR: Postprocessing:')) return;
+                const reason = skipReason(line);
+                item.skipped.push(reason ?? 'failed');
+                if (!reason) item.error = line.slice('ERROR:'.length).trim();
+            });
+
+            child.on('close', (code) => {
+                if (this.processes.get(item.id) !== child) return;
+                if (code === 0) return settle(child, '');
+
+                // A failure with no reason `skipReason` knows to be final is often SoundCloud timing out,
+                // so those tracks get one more go, along with everything else still missing.
+                // ponytail: one immediate retry; add a pause or more attempts if timeouts still get through
+                const missing = Array.from({ length: count ?? 0 }, (_, i) => i + 1).filter((i) => !saved.has(i));
+                if (item.error && !retried && item.status !== 'cancelled' && (missing.length || !count)) {
+                    retried = true;
+                    item.skipped = [];
+                    item.error = '';
+                    return pass(missing);
+                }
+
+                // tracks yt-dlp could not have are skipped, not failed: the rest of an album or playlist still counts
+                if (item.files) return settle(child, '');
+                if (item.error) return settle(child, item.error);
+                if (!item.skipped.length) return settle(child, `yt-dlp exited with code ${code}`);
+                const reasons = [...new Set(item.skipped)].join(', ');
+                settle(
+                    child,
+                    item.skipped.length > 1
+                        ? `None of the ${item.skipped.length} tracks can be downloaded (${reasons})`
+                        : `This track can't be downloaded (${reasons})`,
+                );
+            });
+        };
+
+        if (!playlistFolder) return pass();
+
+        // An album or playlist that gets a folder starts with a quick run for its year and cover.
+        const child = start(
+            playlistArgs(item.url, {
+                auth: !!auth,
+                folder: app.getPath('temp'),
+                cover: `sc-desktop-cover-${process.pid}-${item.id}`,
+            }),
+        );
+        let error = '';
+        createInterface({ input: child.stdout }).on('line', (line) => {
+            playlist = parsePlaylist(line) ?? playlist;
+        });
+        createInterface({ input: child.stderr }).on('line', (line) => {
+            if (line.startsWith('ERROR:')) error = line.slice('ERROR:'.length).trim();
+        });
+        child.on('close', (code) => {
+            if (this.processes.get(item.id) !== child) return;
+            // without the year the folder could get the wrong name, so this is not carried on from
+            if (code !== 0 || item.status === 'cancelled') {
+                return settle(child, error || `yt-dlp exited with code ${code}`);
+            }
+            pass();
         });
     }
 
