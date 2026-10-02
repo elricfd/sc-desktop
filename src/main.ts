@@ -39,7 +39,7 @@ import { isTrustedSender, markTrustedSender, trustedHandle, trustedOn } from './
 import { installStoreReadCache } from './utils/storeCache';
 import { deriveBrowserUserAgent } from './utils/userAgent';
 import { ejectDmg, findInstallerDmg } from './utils/installerDmg';
-import { DEFAULT_TEMPLATE } from './utils/ytdlp';
+import { DEFAULT_FOLDER, DEFAULT_TEMPLATE } from './utils/ytdlp';
 import { presentAsChrome } from './utils/chromeIdentity';
 import {
     EMPTY_PAGE_INFO,
@@ -96,6 +96,8 @@ const store = new Store({
         // empty means the system Downloads folder
         downloadFolder: '',
         downloadTemplate: DEFAULT_TEMPLATE,
+        // empty means albums and playlists get no folder of their own
+        downloadPlaylistFolder: DEFAULT_FOLDER,
         // empty means look it up on PATH
         ytDlpPath: '',
         accounts: [{ id: 'default', name: 'Main Account' }],
@@ -128,9 +130,10 @@ let isQuitting = false;
 const devMode = process.argv.includes('--dev');
 const isMac = process.platform === 'darwin';
 
-// macOS has no native back/forward UI, so show the header nav buttons by default. One-time so an
-// opt-out in Settings sticks, and so installs that already persisted the old `false` default get it too.
-if (isMac && !store.get('macNavControlsDefaulted', false)) {
+// No platform has native back/forward UI here, so show the header nav buttons by default. One-time so
+// an opt-out in Settings sticks, and so installs that already persisted the old `false` default get it
+// too. The flag keeps its macOS-era name so Macs that already opted out are not switched back on.
+if (!store.get('macNavControlsDefaulted', false)) {
     store.set({ navigationControlsEnabled: true, macNavControlsDefaulted: true });
 }
 

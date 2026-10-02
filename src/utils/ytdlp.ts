@@ -3,9 +3,12 @@ import { homedir } from 'os';
 import { delimiter, join } from 'path';
 
 export const DEFAULT_TEMPLATE = '%(uploader)s - %(title)s.%(ext)s';
+// `playlist_release_year` is not a yt-dlp field: buildArgs hands it in
+export const DEFAULT_FOLDER = '%(playlist_uploader)s - %(playlist_title)s';
 
 const PROGRESS_PREFIX = 'SCRPC_PROGRESS ';
 const FILE_PREFIX = 'SCRPC_FILE ';
+const PLAYLIST_PREFIX = 'SCRPC_PLAYLIST ';
 
 // One JSON object per progress tick. `|null` because a missing field would otherwise print as a
 // bare NA, and `j` escapes titles to ASCII, so the line survives any console encoding.
@@ -32,6 +35,65 @@ export interface DownloadOptions {
     template: string;
     /** read the account options built by `authConfig` from stdin */
     auth?: boolean;
+    /** fetch only these positions of a playlist: the ones a first pass left without a file */
+    items?: number[];
+    /** write the cover and tags into each file; yt-dlp needs ffmpeg for it, see `hasFfmpeg` */
+    tags?: boolean;
+    /** folder template for an album or playlist, put in front of `template`; blank for no folder */
+    playlistFolder?: string;
+    /** the album's or playlist's release year, from `playlistArgs` */
+    year?: number | null;
+}
+
+/** Albums and playlists, which both live under /sets/. */
+export function isSet(url: string): boolean {
+    try {
+        return new URL(url).pathname.includes('/sets/');
+    } catch {
+        return false;
+    }
+}
+
+export interface PlaylistInfo {
+    year: number | null;
+    /** where the cover was written, or null when the album or playlist has none */
+    cover: string | null;
+}
+
+/**
+ * A quick first run for an album or playlist, for two things the download itself cannot give:
+ * its release year, which yt-dlp tells none of its tracks, and its cover, which yt-dlp does not
+ * write in a run that embeds the tracks' covers. The cover lands in `folder` as `cover` plus its
+ * extension; `parsePlaylist` reads the answer.
+ */
+export function playlistArgs(url: string, options: { auth?: boolean; folder: string; cover: string }): string[] {
+    return [
+        ...(options.auth ? ['--config-locations', '-'] : []),
+        // the tracks are only listed, not looked up
+        '--flat-playlist',
+        '--write-thumbnail',
+        '-P',
+        options.folder,
+        '-o',
+        `pl_thumbnail:${options.cover}`,
+        '--print',
+        `playlist:${PLAYLIST_PREFIX}{"year":%(release_year|null)j,"cover":%(thumbnails.:.filepath|null)j}`,
+        '--',
+        url,
+    ];
+}
+
+export function parsePlaylist(line: string): PlaylistInfo | null {
+    if (!line.startsWith(PLAYLIST_PREFIX)) return null;
+    try {
+        const raw = JSON.parse(line.slice(PLAYLIST_PREFIX.length)) as Record<string, unknown>;
+        // one entry per size of the cover, with a path only for the one that was written
+        const covers: unknown[] = Array.isArray(raw.cover) ? raw.cover : [];
+        const cover = covers.find((path): path is string => typeof path === 'string') ?? null;
+        return { year: numberOrNull(raw.year), cover };
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -52,23 +114,33 @@ export function authConfig(token: string): string | null {
 const FORMAT = 'download/bestaudio[format_id!*=preview]';
 
 // Saved as SoundCloud serves it. There is deliberately no conversion option: re-encoding a lossy
-// stream to FLAC or WAV only produces a bigger file that claims to be lossless.
+// stream to FLAC or WAV only produces a bigger file that claims to be lossless. The cover and tags
+// go into the container around the audio, which is copied as it is.
 export function buildArgs(url: string, options: DownloadOptions): string[] {
+    const file = options.template.trim() || DEFAULT_TEMPLATE;
+    const folder = options.playlistFolder?.trim();
     return [
         ...(options.auth ? ['--config-locations', '-'] : []),
+        ...(options.items?.length ? ['--playlist-items', options.items.join(',')] : []),
+        ...(options.tags ? ['--embed-thumbnail', '--embed-metadata'] : []),
+        // gives every track a field of that name, for the folder template to use
+        ...(options.year ? ['--parse-metadata', `${options.year}:%(playlist_release_year)s`] : []),
         '--newline',
         // --print implies --quiet, which would drop the progress lines
         '--progress',
         '--progress-template',
         PROGRESS_TEMPLATE,
         '--print',
-        `after_move:${FILE_PREFIX}%(filepath)j`,
+        // Printed before the cover and tags are written, so a file that cannot take them (a WAV has no
+        // place for a cover) still counts as saved. The position comes with the file because a file
+        // that was already there reports no progress.
+        `post_process:${FILE_PREFIX}{"file":%(filepath)j,"index":%(playlist_index|null)j,"count":%(n_entries|null)j}`,
         '-f',
         FORMAT,
         '-P',
         options.folder,
         '-o',
-        options.template.trim() || DEFAULT_TEMPLATE,
+        folder ? `${folder}/${file}` : file,
         // everything after this is a URL, never an option
         '--',
         url,
@@ -100,7 +172,10 @@ export interface DownloadProgress {
     count: number | null;
 }
 
-export type YtDlpLine = { progress: DownloadProgress } | { file: string } | null;
+export type YtDlpLine =
+    | { progress: DownloadProgress }
+    | { file: string; index: number | null; count: number | null }
+    | null;
 
 const numberOrNull = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 const stringOrNull = (value: unknown) => (typeof value === 'string' ? value : null);
@@ -108,8 +183,10 @@ const stringOrNull = (value: unknown) => (typeof value === 'string' ? value : nu
 export function parseLine(line: string): YtDlpLine {
     try {
         if (line.startsWith(FILE_PREFIX)) {
-            const file: unknown = JSON.parse(line.slice(FILE_PREFIX.length));
-            return typeof file === 'string' ? { file } : null;
+            const raw = JSON.parse(line.slice(FILE_PREFIX.length)) as Record<string, unknown>;
+            return typeof raw.file === 'string'
+                ? { file: raw.file, index: numberOrNull(raw.index), count: numberOrNull(raw.count) }
+                : null;
         }
         if (line.startsWith(PROGRESS_PREFIX)) {
             const raw = JSON.parse(line.slice(PROGRESS_PREFIX.length)) as Record<string, unknown>;
@@ -149,9 +226,18 @@ export function searchDirs(env: NodeJS.ProcessEnv = process.env): string[] {
     ].filter(Boolean);
 }
 
+const executable = (name: string) => (process.platform === 'win32' ? `${name}.exe` : name);
+
 /** `customPath` wins outright when set, so a typo there is reported instead of silently ignored. */
 export function findYtDlp(customPath: string, dirs = searchDirs()): string | null {
-    const name = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    const candidates = customPath.trim() ? [customPath.trim()] : dirs.map((dir) => join(dir, name));
+    const candidates = customPath.trim() ? [customPath.trim()] : dirs.map((dir) => join(dir, executable('yt-dlp')));
     return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+/**
+ * Whether yt-dlp can write covers and tags. Without ffmpeg it fails at that step on every track and
+ * leaves each cover behind as a loose image, so the app only asks for them when ffmpeg is there.
+ */
+export function hasFfmpeg(dirs = searchDirs()): boolean {
+    return dirs.some((dir) => existsSync(join(dir, executable('ffmpeg'))));
 }
