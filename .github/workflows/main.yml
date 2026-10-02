@@ -43,6 +43,11 @@ jobs:
               if: matrix.os != 'ubuntu-latest' && env.EVS_USERNAME != ''
               run: python scripts/evs-auth.py
 
+            # the lockfile records the git-hosted dependencies with SSH URLs, and runners have no key
+            - name: Fetch git dependencies over HTTPS
+              shell: bash
+              run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
             - name: Install dependencies
               run: pnpm install
 
