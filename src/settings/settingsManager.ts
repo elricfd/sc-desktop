@@ -7,7 +7,7 @@ import { appUrl, cspMetaTag, provideDocument } from '../utils/appProtocol';
 import { markTrustedSender } from '../utils/ipcGuard';
 import { escapeHtml } from '../utils/escapeHtml';
 import { readSecret } from '../utils/secretStore';
-import { DEFAULT_TEMPLATE } from '../utils/ytdlp';
+import { DEFAULT_FOLDER, DEFAULT_TEMPLATE } from '../utils/ytdlp';
 import { downloadFolder } from '../downloads/downloadManager';
 import { join } from 'path';
 
@@ -158,6 +158,12 @@ export class SettingsManager {
                 ${text('downloadTemplate')}
                 <input type="text" class="textInput" id="downloadTemplate" spellcheck="false" value="${escapeHtml(
                     store.get('downloadTemplate', DEFAULT_TEMPLATE),
+                )}">
+            </label>
+            <label class="field">
+                ${text('downloadPlaylistFolder')}
+                <input type="text" class="textInput" id="downloadPlaylistFolder" spellcheck="false" value="${escapeHtml(
+                    store.get('downloadPlaylistFolder', DEFAULT_FOLDER),
                 )}">
             </label>
             <div class="row">

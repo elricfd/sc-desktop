@@ -204,6 +204,7 @@ const CHECKBOX_SETTINGS = [
 ];
 const TEXT_SETTINGS = [
     'downloadTemplate',
+    'downloadPlaylistFolder',
     'ytDlpPath',
     'proxyHost',
     'proxyPort',
