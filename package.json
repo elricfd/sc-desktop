@@ -1,10 +1,10 @@
 {
-    "name": "soundcloud-rpc",
+    "name": "sc-desktop",
     "version": "1.0.0-beta",
     "description": "🎵 A SoundCloud Client with Discord Rich Presence, Dark Mode, Last.fm and AdBlock support",
     "author": {
-        "name": "Richard Habitzreuter",
-        "email": "richardhabitzreuter@icloud.com"
+        "name": "Elric",
+        "email": "elric@bu.edu"
     },
     "license": "MIT",
     "scripts": {
