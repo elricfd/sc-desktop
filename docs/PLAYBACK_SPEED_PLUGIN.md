@@ -1,7 +1,7 @@
 # Playback Speed plugin
 
 `plugins/playback-speed.js` ports the playback-rate controls from
-[SoundCloud Desktop](https://github.com/zxcloli666/SoundCloud-Desktop) to soundcloud-rpc's content-script plugin API.
+[SoundCloud Desktop](https://github.com/zxcloli666/SoundCloud-Desktop) to sc-desktop's content-script plugin API.
 
 ## Features
 
@@ -19,7 +19,7 @@
 
 ## Installation
 
-1. Open soundcloud-rpc and press `F1`.
+1. Open sc-desktop and open Settings from the menu button (or press `F1`).
 2. In **Plugins**, click **Open plugins folder**.
 3. Copy `playback-speed.js` into that folder.
 4. Click **Refresh plugins**, then enable **Playback Speed**.

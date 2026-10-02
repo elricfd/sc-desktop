@@ -1,7 +1,7 @@
 # Custom Themes
 
-soundcloud-rpc now supports custom themes, You can customize the appearance of the SoundCloud UI by creating and loading
-CSS theme files.
+sc-desktop supports custom themes. You can customize the appearance of the SoundCloud UI by creating and loading CSS
+theme files.
 
 ## How to Use Custom Themes
 
@@ -54,9 +54,9 @@ body {
 
 Themes are stored in your user data directory:
 
-- **Windows**: `%APPDATA%\soundcloud-rpc\themes\`
-- **macOS**: `~/Library/Application Support/soundcloud-rpc/themes/`
-- **Linux**: `~/.config/soundcloud-rpc/themes/`
+- **Windows**: `%APPDATA%\sc-desktop\themes\`
+- **macOS**: `~/Library/Application Support/sc-desktop/themes/`
+- **Linux**: `~/.config/sc-desktop/themes/`
 
 ## Troubleshooting
 
