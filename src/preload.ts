@@ -103,6 +103,7 @@ let lastPageInfo = '';
 setInterval(() => {
     addDownloadButtons();
     cleanShareDialog();
+    watchFrames();
 
     const text = (selector: string) => document.querySelector<HTMLElement>(selector)?.innerText.trim() ?? '';
     const ownProfile = document.querySelector<HTMLAnchorElement>(
@@ -137,7 +138,8 @@ const SWIPE_GAP_MS = 150; // silence that ends a gesture, momentum events keep o
 
 // can a scroller under the pointer still move sideways in this direction?
 function canScrollX(e: WheelEvent, direction: number): boolean {
-    const { documentElement: html, body } = document;
+    // the document the event is in: this one, or a same-origin iframe's (see watchFrames)
+    const { documentElement: html, body } = (e.target as Node | null)?.ownerDocument ?? document;
     const overflowX = (el: Element) => getComputedStyle(el).overflowX;
     // The viewport, which scrolls through <html>, takes <html>'s overflow or <body>'s when <html>'s is
     // visible (soundcloud.com overflows sideways below ~960px this way, and body.scrollLeft stays 0).
@@ -145,8 +147,10 @@ function canScrollX(e: WheelEvent, direction: number): boolean {
     const bodyGoesToViewport = overflowX(html) === 'visible';
     const viewport = bodyGoesToViewport ? overflowX(body) : overflowX(html);
 
-    for (const node of e.composedPath()) {
-        if (!(node instanceof Element) || (node === body && bodyGoesToViewport)) continue;
+    for (const target of e.composedPath()) {
+        // by nodeType, not instanceof: an iframe's elements belong to that frame's own Element class
+        const node = target as Element;
+        if (node.nodeType !== 1 || (node === body && bodyGoesToViewport)) continue;
         const isViewport = node === html;
         const overflow = isViewport ? viewport : overflowX(node);
         if (isViewport ? overflow === 'hidden' || overflow === 'clip' : overflow !== 'auto' && overflow !== 'scroll') {
@@ -158,41 +162,51 @@ function canScrollX(e: WheelEvent, direction: number): boolean {
     return false;
 }
 
-if (process.platform === 'darwin') {
-    let last = 0;
-    let dx = 0;
-    let dy = 0;
-    let ignored = false; // this gesture already navigated, or a scroller owns it
-    let checked = false; // scroller check runs once per gesture, on its first horizontal event
+let last = 0;
+let dx = 0;
+let dy = 0;
+let ignored = false; // this gesture already navigated, or a scroller owns it
+let checked = false; // scroller check runs once per gesture, on its first horizontal event
 
-    window.addEventListener(
-        'wheel',
-        (e) => {
-            if (e.ctrlKey || e.shiftKey) return; // pinch-zoom, shift-scroll
+function onSwipeWheel(e: WheelEvent): void {
+    if (e.ctrlKey || e.shiftKey) return; // pinch-zoom, shift-scroll
 
-            if (e.timeStamp - last > SWIPE_GAP_MS) {
-                dx = 0;
-                dy = 0;
-                ignored = false;
-                checked = false;
-            }
-            last = e.timeStamp;
-            if (ignored) return;
+    // on one clock: e.timeStamp counts from the load of the document the event is in, and iframes load later
+    const now = e.timeStamp + (e.view?.performance.timeOrigin ?? 0);
+    if (now - last > SWIPE_GAP_MS) {
+        dx = 0;
+        dy = 0;
+        ignored = false;
+        checked = false;
+    }
+    last = now;
+    if (ignored) return;
 
-            if (!checked && e.deltaX) {
-                checked = true;
-                ignored = canScrollX(e, e.deltaX);
-                if (ignored) return;
-            }
+    if (!checked && e.deltaX) {
+        checked = true;
+        ignored = canScrollX(e, e.deltaX);
+        if (ignored) return;
+    }
 
-            dx += e.deltaX;
-            dy += e.deltaY;
-            if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < 2 * Math.abs(dy)) return;
+    dx += e.deltaX;
+    dy += e.deltaY;
+    if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < 2 * Math.abs(dy)) return;
 
-            ignored = true;
-            // same overscroll semantics as Chromium elsewhere: scrolling past the left edge is back
-            ipcRenderer.send(dx < 0 ? 'navigate-back' : 'navigate-forward');
-        },
-        { passive: true },
-    );
+    ignored = true;
+    // same overscroll semantics as Chromium elsewhere: scrolling past the left edge is back
+    ipcRenderer.send(dx < 0 ? 'navigate-back' : 'navigate-forward');
+}
+
+if (process.platform === 'darwin') window.addEventListener('wheel', onSwipeWheel, { passive: true });
+
+// SoundCloud renders some pages inside a same-origin iframe (every track page, when signed in), and wheel
+// events over an iframe never reach this document. Its window gets the same listener, and so the same
+// gesture: the tail of a swipe that navigated away from a frame lands on the page and must not count again.
+function watchFrames(): void {
+    if (process.platform !== 'darwin') return;
+
+    for (const frame of document.querySelectorAll('iframe')) {
+        // null when cross-origin. Adding the listener again does nothing, until a load gives the frame a new window.
+        if (frame.contentDocument) frame.contentWindow?.addEventListener('wheel', onSwipeWheel, { passive: true });
+    }
 }
