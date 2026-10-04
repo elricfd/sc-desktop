@@ -5,6 +5,8 @@ const { send } = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock('electron', () => ({ contextBridge: { exposeInMainWorld: vi.fn() }, ipcRenderer: { send } }));
 
 class FakeScroller {
+    nodeType = 1;
+
     constructor(
         public scrollLeft = 0,
         public scrollWidth = 0,
@@ -17,6 +19,8 @@ class FakeScroller {
 const html = new FakeScroller();
 const body = new FakeScroller();
 const composedPath = vi.fn();
+// what the page's 500ms poll finds for `iframe`
+const frames: object[] = [];
 let onWheel: (e: object) => void;
 let onCopy: (e: object) => void;
 let selection = '';
@@ -24,11 +28,14 @@ let now = 0;
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
 
 /** Ten wheel events, 16ms apart like a 60Hz trackpad, that add up to dx / dy. */
-function swipe(dx: number, opts: { dy?: number; path?: object[]; ctrlKey?: boolean; shiftKey?: boolean } = {}) {
+function swipe(
+    dx: number,
+    opts: { dy?: number; path?: object[]; ctrlKey?: boolean; shiftKey?: boolean; on?: (e: object) => void } = {},
+) {
     composedPath.mockReturnValue(opts.path ?? []);
     for (let i = 0; i < 10; i++) {
         now += 16;
-        onWheel({
+        (opts.on ?? onWheel)({
             deltaX: dx / 10,
             deltaY: (opts.dy ?? 0) / 10,
             timeStamp: now,
@@ -46,13 +53,16 @@ const pause = () => {
 
 beforeAll(async () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });
-    vi.stubGlobal('Element', FakeScroller);
+    vi.useFakeTimers();
+    vi.stubGlobal('HTMLImageElement', class {});
     vi.stubGlobal('document', {
         documentElement: html,
         body,
         addEventListener: (_type: string, listener: (e: object) => void) => {
             onCopy = listener;
         },
+        querySelector: () => null,
+        querySelectorAll: (selector: string) => (selector === 'iframe' ? frames : []),
     });
     vi.stubGlobal('getSelection', () => selection);
     vi.stubGlobal('getComputedStyle', (el: FakeScroller) => ({ overflowX: el.overflowX }));
@@ -66,6 +76,7 @@ beforeAll(async () => {
 
 afterAll(() => {
     Object.defineProperty(process, 'platform', realPlatform);
+    vi.useRealTimers();
     vi.unstubAllGlobals();
 });
 
@@ -158,6 +169,26 @@ describe('two-finger swipe navigation', () => {
         Object.assign(html, { scrollWidth: 960, clientWidth: 792 });
         swipe(200, { path: [body, html] });
         expect(send.mock.calls).toEqual([['navigate-forward']]);
+    });
+});
+
+describe('swiping over a page SoundCloud renders in an iframe', () => {
+    it('navigates once from inside a same-origin frame, with one listener however often the frame is seen', () => {
+        let onFrameWheel: (e: object) => void = () => {};
+        const addEventListener = vi.fn((_type: string, listener: (e: object) => void) => {
+            onFrameWheel = listener;
+        });
+        const frameDocument = { documentElement: new FakeScroller(), body: new FakeScroller() };
+        frames.push({ contentDocument: frameDocument, contentWindow: { addEventListener } });
+        frames.push({ contentDocument: null }); // cross-origin: left alone
+
+        vi.advanceTimersByTime(1000); // two polls
+        send.mockClear(); // the poll also reports the page's title
+        expect(new Set(addEventListener.mock.calls.map(([, listener]) => listener)).size).toBe(1);
+
+        swipe(-200, { on: onFrameWheel });
+        swipe(-200); // going back hides the frame, and the rest of the gesture lands on the page
+        expect(send.mock.calls).toEqual([['navigate-back']]);
     });
 });
 
