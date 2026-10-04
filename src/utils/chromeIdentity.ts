@@ -40,18 +40,23 @@ export async function presentAsChrome(content: WebContents, secureView: WebConte
     dbg.attach('1.3');
     await dbg.sendCommand('Emulation.setUserAgentOverride', override);
 
-    // Cross-site iframes and workers are separate targets that do not inherit the override. They
-    // start paused so it lands before their first request; not every target type has every domain,
-    // and a target can be gone by the time we answer, so each step is best-effort.
-    // ponytail: service workers are not children of the page and keep the Chromium-only brand;
-    // rewrite Sec-CH-UA in session.webRequest.onBeforeSendHeaders if that turns out to matter.
+    // Cross-site iframes, workers and the page's service worker are separate targets that do not
+    // inherit the override. They start paused so it lands before their first request; not every
+    // target type has every domain, and a target can be gone by the time we answer, so each step
+    // is best-effort.
     const quiet = (method: string, params: object, sessionId: string) =>
         dbg.sendCommand(method, params, sessionId).catch(() => {});
-    dbg.on('message', async (_event, method, params) => {
-        if (method !== 'Target.attachedToTarget') return;
-        await quiet('Emulation.setUserAgentOverride', override, params.sessionId);
-        await quiet('Target.setAutoAttach', autoAttach, params.sessionId);
-        await quiet('Runtime.runIfWaitingForDebugger', {}, params.sessionId);
+    const start = async (sessionId: string) => {
+        await quiet('Emulation.setUserAgentOverride', override, sessionId);
+        await quiet('Target.setAutoAttach', autoAttach, sessionId);
+        await quiet('Runtime.runIfWaitingForDebugger', {}, sessionId);
+    };
+    dbg.on('message', (_event, method, params, sessionId) => {
+        if (method === 'Target.attachedToTarget') void start(params.sessionId);
+        // A service worker that stops and starts again keeps its session: no attachedToTarget, only
+        // this, and it is paused again. Until it is told to run, every request of every tab it
+        // controls waits on it, reloads included.
+        else if (method === 'Inspector.targetReloadedAfterCrash' && sessionId) void start(sessionId);
     });
     await dbg.sendCommand('Target.setAutoAttach', autoAttach);
 
