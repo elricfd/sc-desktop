@@ -9,6 +9,7 @@ export const DEFAULT_FOLDER = '%(playlist_uploader)s - %(playlist_title)s';
 const PROGRESS_PREFIX = 'SCRPC_PROGRESS ';
 const FILE_PREFIX = 'SCRPC_FILE ';
 const PLAYLIST_PREFIX = 'SCRPC_PLAYLIST ';
+const TRACK_PREFIX = 'SCRPC_TRACK ';
 
 // One JSON object per progress tick. `|null` because a missing field would otherwise print as a
 // bare NA, and `j` escapes titles to ASCII, so the line survives any console encoding.
@@ -159,6 +160,38 @@ export function skipReason(line: string): string | null {
     if (/Requested format is not available/i.test(line)) return 'Go+ only';
     if (/HTTP Error 40[13]/.test(line)) return 'not authorized';
     return null;
+}
+
+/** The id of the track a DRM failure is about, which is all that line says of it. */
+export function drmId(line: string): string | null {
+    return /^ERROR: \[soundcloud\] (\d+): .*DRM protected/i.exec(line)?.[1] ?? null;
+}
+
+/**
+ * A run that downloads nothing and only names the tracks with these ids, for the popup's list of
+ * DRM-protected ones. `--ignore-no-formats-error` is what lets yt-dlp get as far as their titles;
+ * `parseTrack` reads the answer.
+ */
+export function lookupArgs(ids: string[], options: { auth?: boolean } = {}): string[] {
+    return [
+        ...(options.auth ? ['--config-locations', '-'] : []),
+        '--ignore-no-formats-error',
+        '--print',
+        `pre_process:${TRACK_PREFIX}{"id":%(id)j,"uploader":%(uploader|null)j,"title":%(title|null)j}`,
+        '--',
+        ...ids.map((id) => `https://api.soundcloud.com/tracks/${id}`),
+    ];
+}
+
+export function parseTrack(line: string): { id: string; name: string } | null {
+    if (!line.startsWith(TRACK_PREFIX)) return null;
+    try {
+        const raw = JSON.parse(line.slice(TRACK_PREFIX.length)) as Record<string, unknown>;
+        const name = [raw.uploader, raw.title].filter((part) => part && typeof part === 'string').join(' - ');
+        return typeof raw.id === 'string' && name ? { id: raw.id, name } : null;
+    } catch {
+        return null;
+    }
 }
 
 export interface DownloadProgress {

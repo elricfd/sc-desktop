@@ -13,11 +13,14 @@ import {
     buildArgs,
     DEFAULT_FOLDER,
     DEFAULT_TEMPLATE,
+    drmId,
     findYtDlp,
     hasFfmpeg,
     isSet,
+    lookupArgs,
     parseLine,
     parsePlaylist,
+    parseTrack,
     playlistArgs,
     searchDirs,
     skipReason,
@@ -46,6 +49,8 @@ interface DownloadItem {
     file: string;
     /** one `skipReason` per track yt-dlp had to leave out */
     skipped: string[];
+    /** the DRM-protected ones among them by name, looked up once the download is over */
+    drm: string[];
     error: string;
 }
 
@@ -104,6 +109,7 @@ export class DownloadManager {
             size: 0,
             file: '',
             skipped: [],
+            drm: [],
             error: '',
         });
         this.show();
@@ -146,6 +152,8 @@ export class DownloadManager {
         const saved = new Set<number>();
         let count: number | null = null;
         let retried = false;
+        // the ids of the tracks skipped as DRM-protected
+        const drm = new Set<string>();
 
         // 'error' (could not start) and 'close' can both fire; whichever comes first settles it
         const settle = (child: ChildProcess, error: string) => {
@@ -193,6 +201,26 @@ export class DownloadManager {
             return child;
         };
 
+        // The DRM-protected tracks are named for the popup's list before the download is settled.
+        // ponytail: yt-dlp looks them up one by one, about a second each; ask SoundCloud for all the ids at once if that drags
+        const finish = (child: ChildProcess, error: string) => {
+            if (!drm.size || item.status === 'cancelled') return settle(child, error);
+            const names = new Map<string, string>();
+            const lookup = start(lookupArgs([...drm], { auth: !!auth }));
+            item.status = 'processing';
+            this.changed();
+            createInterface({ input: lookup.stdout }).on('line', (line) => {
+                const track = parseTrack(line);
+                if (track) names.set(track.id, track.name);
+            });
+            // nothing reads it, and a full pipe would stall yt-dlp
+            lookup.stderr.resume();
+            lookup.on('close', () => {
+                item.drm = [...drm].map((id) => names.get(id) ?? `Track ${id}`);
+                settle(lookup, error);
+            });
+        };
+
         // `items` limits a second pass to the playlist positions the first left without a file
         const pass = (items?: number[]) => {
             const child = start(
@@ -237,6 +265,8 @@ export class DownloadManager {
                 if (!line.startsWith('ERROR:') || line.startsWith('ERROR: Postprocessing:')) return;
                 const reason = skipReason(line);
                 item.skipped.push(reason ?? 'failed');
+                const id = drmId(line);
+                if (id) drm.add(id);
                 if (!reason) item.error = line.slice('ERROR:'.length).trim();
             });
 
@@ -252,15 +282,16 @@ export class DownloadManager {
                     retried = true;
                     item.skipped = [];
                     item.error = '';
+                    drm.clear();
                     return pass(missing);
                 }
 
                 // tracks yt-dlp could not have are skipped, not failed: the rest of an album or playlist still counts
-                if (item.files) return settle(child, '');
-                if (item.error) return settle(child, item.error);
+                if (item.files) return finish(child, '');
+                if (item.error) return finish(child, item.error);
                 if (!item.skipped.length) return settle(child, `yt-dlp exited with code ${code}`);
                 const reasons = [...new Set(item.skipped)].join(', ');
-                settle(
+                finish(
                     child,
                     item.skipped.length > 1
                         ? `None of the ${item.skipped.length} tracks can be downloaded (${reasons})`
@@ -538,6 +569,23 @@ export class DownloadManager {
                 opacity: 1;
                 user-select: text;
             }
+            #drm {
+                border-top: 1px solid ${line};
+            }
+            summary {
+                padding: 8px 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+            #drm-list {
+                max-height: 140px;
+                padding: 0 12px 8px;
+                overflow-y: auto;
+                font-size: 12px;
+                line-height: 1.6;
+                white-space: pre-line;
+                user-select: text;
+            }
         </style>
         <header>
             <h1>Downloads</h1>
@@ -547,6 +595,10 @@ export class DownloadManager {
         </header>
         <div id="empty">No downloads yet. Use the download button under a track, album or playlist.</div>
         <div id="list"></div>
+        <details id="drm" hidden>
+            <summary></summary>
+            <div id="drm-list"></div>
+        </details>
         <script src="/downloadsPanel.js"></script>`;
     }
 }
