@@ -543,6 +543,10 @@ export class DownloadManager {
                 white-space: nowrap;
                 text-overflow: ellipsis;
             }
+            /* without this a row with no button puts the detail beside the title and squeezes it to nothing */
+            .row > :not(button) {
+                grid-column: 1;
+            }
             .row button {
                 grid-row: span 3;
             }
