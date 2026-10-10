@@ -1,6 +1,6 @@
 {
     "name": "sc-desktop",
-    "version": "1.0.1-beta",
+    "version": "1.1.0-beta",
     "description": "🎵 A SoundCloud Client with Discord Rich Presence, Dark Mode, Last.fm and AdBlock support",
     "author": {
         "name": "Elric",
