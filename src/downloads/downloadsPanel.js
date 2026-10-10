@@ -4,6 +4,8 @@
 const api = window.downloadsAPI;
 const list = document.getElementById('list');
 const empty = document.getElementById('empty');
+const drm = document.getElementById('drm');
+const drmList = document.getElementById('drm-list');
 const rows = new Map();
 
 function formatBytes(bytes) {
@@ -111,6 +113,12 @@ function render(items) {
     });
 
     empty.hidden = items.length > 0;
+
+    const names = [...new Set(items.flatMap((item) => item.drm))].join('\n');
+    drm.hidden = !names;
+    drm.firstElementChild.textContent = `DRM-protected tracks (${names ? names.split('\n').length : 0})`;
+    // only when it changes: writing it again would drop a selection in it
+    if (drmList.textContent !== names) drmList.textContent = names;
 }
 
 list.addEventListener('click', (e) => {

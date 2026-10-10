@@ -4,11 +4,14 @@ import {
     buildArgs,
     DEFAULT_FOLDER,
     DEFAULT_TEMPLATE,
+    drmId,
     findYtDlp,
     hasFfmpeg,
     isSet,
+    lookupArgs,
     parseLine,
     parsePlaylist,
+    parseTrack,
     playlistArgs,
     skipReason,
 } from './utils/ytdlp';
@@ -177,6 +180,36 @@ describe('skipReason', () => {
         expect(skipReason('ERROR: [soundcloud] Unable to download JSON metadata: HTTP Error 404')).toBeNull();
         expect(skipReason('WARNING: [soundcloud] 2119862316: hls_mp3 format not found')).toBeNull();
         expect(skipReason('WARNING: [soundcloud] 1: This video is DRM protected')).toBeNull();
+    });
+});
+
+describe('the DRM-protected tracks', () => {
+    it('takes the id from a DRM failure and from nothing else', () => {
+        expect(drmId('ERROR: [soundcloud] 2119862316: This video is DRM protected')).toBe('2119862316');
+        expect(drmId('WARNING: [soundcloud] 2119862316: This video is DRM protected')).toBeNull();
+        expect(drmId('ERROR: [soundcloud] 293: Requested format is not available')).toBeNull();
+    });
+
+    it('looks the ids up without downloading, as URLs and never as options', () => {
+        const args = lookupArgs(['1', '2'], { auth: true });
+        expect(args.slice(0, 2)).toEqual(['--config-locations', '-']);
+        expect(args).toContain('--ignore-no-formats-error');
+        expect(args.slice(args.indexOf('--') + 1)).toEqual([
+            'https://api.soundcloud.com/tracks/1',
+            'https://api.soundcloud.com/tracks/2',
+        ]);
+        expect(lookupArgs(['1'])).not.toContain('--config-locations');
+    });
+
+    it('names a track from the line yt-dlp really prints', () => {
+        expect(parseTrack('SCRPC_TRACK {"id":"2119862316","uploader":"Flume","title":"Easy Goodbye"}')).toEqual({
+            id: '2119862316',
+            name: 'Flume - Easy Goodbye',
+        });
+        expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":null,"title":"B"}')).toEqual({ id: '1', name: 'B' });
+        expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":null,"title":null}')).toBeNull();
+        expect(parseTrack('SCRPC_TRACK {"id":')).toBeNull();
+        expect(parseTrack('SCRPC_FILE {"file":"/music/A - B.mp3"}')).toBeNull();
     });
 });
 
