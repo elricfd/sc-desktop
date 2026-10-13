@@ -200,12 +200,13 @@ const CHECKBOX_SETTINGS = [
     'hidePromotions', 'hideEventsNearYou', 'hideArtistUpsells', 'downloadButtonEnabled',
     'downloadUseAccount', 'minimizeToTray', 'navigationControlsEnabled', 'trackParserEnabled',
     'autoUpdaterEnabled', 'displayWhenIdling', 'displaySCSmallIcon', 'adBlocker',
-    'discordRichPresence', 'displayButtons',
+    'discordRichPresence', 'displayButtons', 'downloadDrmFallback',
 ];
 const TEXT_SETTINGS = [
     'downloadTemplate',
     'downloadPlaylistFolder',
     'ytDlpPath',
+    'deemixPath',
     'proxyHost',
     'proxyPort',
     'lastFmApiKey',

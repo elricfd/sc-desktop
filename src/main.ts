@@ -102,6 +102,9 @@ const store = new Store({
         downloadPlaylistFolder: DEFAULT_FOLDER,
         // empty means look it up on PATH
         ytDlpPath: '',
+        // DRM-protected tracks are fetched from elsewhere: Deezer if deemix is set here, else YouTube
+        downloadDrmFallback: true,
+        deemixPath: '',
         accounts: [{ id: 'default', name: 'Main Account' }],
         currentAccountId: 'default',
     },
@@ -1097,7 +1100,7 @@ async function init() {
     });
 
     ipcMain.on('setting-changed', async (event, data) => {
-        // settings include the yt-dlp path, which gets executed: only the app's own views may write them
+        // settings include the yt-dlp and deemix paths, which get executed: only the app's own views may write them
         if (!isTrustedSender(event)) return;
 
         if (!isValidSettingPayload(data)) {

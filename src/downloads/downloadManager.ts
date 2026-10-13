@@ -1,8 +1,8 @@
 import { app, BrowserView, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type ElectronStore from 'electron-store';
 import { spawn, type ChildProcess } from 'child_process';
-import { copyFileSync, rmSync, statSync } from 'fs';
-import { delimiter, dirname, extname, join, relative } from 'path';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'fs';
+import { basename, delimiter, dirname, extname, join, relative } from 'path';
 import { createInterface } from 'readline';
 import type { ThemeColors } from '../utils/colorExtractor';
 import { applyNavigationPolicy } from '../utils/navigationPolicy';
@@ -13,6 +13,7 @@ import {
     buildArgs,
     DEFAULT_FOLDER,
     DEFAULT_TEMPLATE,
+    deezerSearchUrl,
     drmId,
     findYtDlp,
     hasFfmpeg,
@@ -21,10 +22,13 @@ import {
     parseLine,
     parsePlaylist,
     parseTrack,
+    pickDeezer,
     playlistArgs,
+    searchArgs,
     searchDirs,
     skipReason,
     type PlaylistInfo,
+    type TrackInfo,
 } from '../utils/ytdlp';
 
 const isMac = process.platform === 'darwin';
@@ -51,6 +55,8 @@ interface DownloadItem {
     skipped: string[];
     /** the DRM-protected ones among them by name, looked up once the download is over */
     drm: string[];
+    /** how many of `files` are YouTube's copy of a DRM-protected track */
+    lowQuality: number;
     error: string;
 }
 
@@ -110,6 +116,7 @@ export class DownloadManager {
             file: '',
             skipped: [],
             drm: [],
+            lowQuality: 0,
             error: '',
         });
         this.show();
@@ -186,39 +193,148 @@ export class DownloadManager {
             this.runQueued();
         };
 
-        const start = (args: string[]) => {
-            const child = spawn(binary, args, {
+        const launch = (program: string, args: string[], input = '') => {
+            const child = spawn(program, args, {
                 env: { ...process.env, PATH: searchDirs().join(delimiter) },
                 stdio: ['pipe', 'pipe', 'pipe'],
                 windowsHide: true,
             });
-            // a write to a yt-dlp that failed to start must not take the app down; 'error' below reports it
+            // a write to a program that failed to start must not take the app down; 'error' reports it
             child.stdin.on('error', () => {});
-            child.stdin.end(auth ?? '');
+            child.stdin.end(input);
             this.processes.set(item.id, child);
+            return child;
+        };
+
+        const start = (args: string[]) => {
+            const child = launch(binary, args, auth ?? '');
             item.status = 'downloading';
             child.on('error', (error) => settle(child, error.message));
             return child;
         };
 
-        // The DRM-protected tracks are named for the popup's list before the download is settled.
+        // What is left to say once nothing more will be tried.
+        const conclude = (child: ChildProcess, code: number | null) => {
+            // tracks yt-dlp could not have are skipped, not failed: the rest of an album or playlist still counts
+            if (item.files) return settle(child, '');
+            if (item.error) return settle(child, item.error);
+            if (!item.skipped.length) return settle(child, `yt-dlp exited with code ${code}`);
+            const reasons = [...new Set(item.skipped)].join(', ');
+            settle(
+                child,
+                item.skipped.length > 1
+                    ? `None of the ${item.skipped.length} tracks can be downloaded (${reasons})`
+                    : `This track can't be downloaded (${reasons})`,
+            );
+        };
+
+        // The DRM-protected tracks, before the download is settled. They are looked up and, if Settings
+        // allows, fetched from somewhere that has them without the DRM: Deezer through deemix when its
+        // path is set, otherwise YouTube, which is lower quality. Those neither has stay skipped, and
+        // are named for the popup's list.
         // ponytail: yt-dlp looks them up one by one, about a second each; ask SoundCloud for all the ids at once if that drags
-        const finish = (child: ChildProcess, error: string) => {
-            if (!drm.size || item.status === 'cancelled') return settle(child, error);
-            const names = new Map<string, string>();
-            const lookup = start(lookupArgs([...drm], { auth: !!auth }));
-            item.status = 'processing';
-            this.changed();
-            createInterface({ input: lookup.stdout }).on('line', (line) => {
-                const track = parseTrack(line);
-                if (track) names.set(track.id, track.name);
-            });
-            // nothing reads it, and a full pipe would stall yt-dlp
-            lookup.stderr.resume();
-            lookup.on('close', () => {
-                item.drm = [...drm].map((id) => names.get(id) ?? `Track ${id}`);
-                settle(lookup, error);
-            });
+        const finish = async (child: ChildProcess, code: number | null) => {
+            const cancelled = () => item.status === 'cancelled';
+            // One step of it. A step that fails is no failure of the download, so this only ever resolves.
+            const step = (program: string, args: string[], onLine: (line: string) => void, input = '') =>
+                new Promise<void>((resolve) => {
+                    const next = launch(program, args, input);
+                    child = next;
+                    createInterface({ input: next.stdout }).on('line', onLine);
+                    // nothing reads it, and a full pipe would stall the program
+                    next.stderr.resume();
+                    next.on('error', () => resolve());
+                    next.on('close', () => resolve());
+                });
+
+            // Deezer's copy, through deemix. It names the file as it is set up to, so it downloads to a
+            // folder of its own and whatever turns up there is the track. It gets no stdin: it asks
+            // there for a login it lacks, and must never be answered with the SoundCloud token.
+            const fromDeezer = async (program: string, track: TrackInfo, target: string) => {
+                const temp = mkdtempSync(join(app.getPath('temp'), 'sc-desktop-deemix-'));
+                try {
+                    const found = await fetch(deezerSearchUrl(track));
+                    const url = pickDeezer(await found.json(), track.duration);
+                    if (!url || cancelled()) return '';
+                    await step(program, ['-p', temp, url], () => {});
+                    const name = readdirSync(temp, { recursive: true, encoding: 'utf8' }).find((entry) =>
+                        /\.(mp3|flac)$/i.test(entry),
+                    );
+                    if (!name || cancelled()) return '';
+                    const file = join(target, basename(name));
+                    mkdirSync(target, { recursive: true });
+                    copyFileSync(join(temp, name), file);
+                    return file;
+                } finally {
+                    rmSync(temp, { recursive: true, force: true });
+                }
+            };
+
+            const tracks = new Map<string, TrackInfo>();
+            try {
+                item.status = 'processing';
+                this.changed();
+                await step(
+                    binary,
+                    lookupArgs([...drm], { auth: !!auth }),
+                    (line) => {
+                        const track = parseTrack(line);
+                        if (track) tracks.set(track.id, track);
+                    },
+                    auth ?? '',
+                );
+
+                // Next to the tracks that did download.
+                // ponytail: with none, the download folder itself, not the album's; work the folder out if that bothers anyone
+                const [first] = files;
+                const target = first ? dirname(first) : folder;
+                const deemix = (this.store.get('deemixPath', '') as string).trim();
+                const elsewhere = this.store.get('downloadDrmFallback', true);
+
+                for (const id of [...drm]) {
+                    const track = tracks.get(id);
+                    // without a title there is nothing to search for
+                    if (!elsewhere || !track?.title || cancelled()) continue;
+                    Object.assign(item, {
+                        status: 'downloading',
+                        downloaded: null,
+                        total: null,
+                        speed: null,
+                        eta: null,
+                    });
+                    item.title = track.title;
+                    this.changed();
+
+                    // Deezer not answering or the file not copying is no reason to give up: YouTube is next
+                    let file = deemix ? await fromDeezer(deemix, track, target).catch(() => '') : '';
+
+                    if (!file && !cancelled()) {
+                        await step(binary, searchArgs(track, { folder: target, tags }), (line) => {
+                            const parsed = parseLine(line);
+                            if (!parsed || cancelled()) return;
+                            if ('file' in parsed) file = parsed.file;
+                            else {
+                                const { downloaded, total, speed, eta, status } = parsed.progress;
+                                Object.assign(item, { downloaded, total, speed, eta });
+                                item.status = status === 'finished' ? 'processing' : 'downloading';
+                            }
+                            this.changed();
+                        });
+                        if (file) item.lowQuality++;
+                    }
+
+                    if (!file) continue;
+                    files.add(file);
+                    item.file = file;
+                    item.files = files.size;
+                    item.skipped.splice(item.skipped.indexOf('DRM-protected'), 1);
+                    drm.delete(id);
+                }
+            } catch {
+                // whatever went wrong, the tracks it did not get are still down as skipped
+            }
+            item.drm = [...drm].map((id) => tracks.get(id)?.name ?? `Track ${id}`);
+            conclude(child, code);
         };
 
         // `items` limits a second pass to the playlist positions the first left without a file
@@ -286,17 +402,8 @@ export class DownloadManager {
                     return pass(missing);
                 }
 
-                // tracks yt-dlp could not have are skipped, not failed: the rest of an album or playlist still counts
-                if (item.files) return finish(child, '');
-                if (item.error) return finish(child, item.error);
-                if (!item.skipped.length) return settle(child, `yt-dlp exited with code ${code}`);
-                const reasons = [...new Set(item.skipped)].join(', ');
-                finish(
-                    child,
-                    item.skipped.length > 1
-                        ? `None of the ${item.skipped.length} tracks can be downloaded (${reasons})`
-                        : `This track can't be downloaded (${reasons})`,
-                );
+                if (drm.size && item.status !== 'cancelled') return void finish(child, code);
+                conclude(child, code);
             });
         };
 
@@ -340,7 +447,8 @@ export class DownloadManager {
 
     /** Stops every running download; yt-dlp would otherwise outlive the app. */
     public cancelAll(): void {
-        for (const child of this.processes.values()) child.kill();
+        // cancelled, not just killed: a download that is falling back would go on to its next program
+        for (const id of [...this.processes.keys()]) this.cancel(id);
     }
 
     // yt-dlp reports progress many times a second per download; the popup gets the whole list at most 5x a second

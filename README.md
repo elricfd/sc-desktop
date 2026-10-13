@@ -46,6 +46,16 @@ chmod +x soundcloud-*-linux.AppImage
 Downloading needs yt-dlp installed (`brew install yt-dlp`, `winget install yt-dlp` or `pip install yt-dlp`), and ffmpeg
 for most tracks. If the app can't find yt-dlp, set its path in Settings.
 
+The file name and the album and playlist folder are yt-dlp output templates. The folder also takes
+`%(playlist_release_year)s`, e.g. `%(playlist_uploader)s - %(playlist_title)s (%(playlist_release_year)s)`, and the
+cover of the album or playlist is saved in it. Downloading as your account passes your SoundCloud session to yt-dlp, so
+it gets what your account can play.
+
+SoundCloud does not hand out DRM-protected tracks, so those are looked up by artist and title and fetched from YouTube
+instead. That copy is lower quality, and the downloads list says so. To try Deezer first, install
+[deemix](https://pypi.org/project/deemix/), run it once in a terminal to sign in, and set its path in Settings. The
+fallback can be turned off there too.
+
 ## Shortcuts
 
 Settings are behind the menu button at the top right.
