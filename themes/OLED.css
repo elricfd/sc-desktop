@@ -1,0 +1,65 @@
+/**
+ * @name OLED
+ * @author elricfd
+ * @version 1.0.0
+ * @description Dark mode on true black, for OLED screens
+*/
+
+.theme-dark {
+    /* === The page, the header and the menus === */
+    --surface-color: #000000 !important;
+    --surface-rgb: 0, 0, 0 !important;
+    --background-surface-color: #000000 !important;
+    --background-dark-color: #000000 !important;
+    --button-dark-background-color: #000000 !important;
+    /* every state of a button has a colour of its own: one left out keeps SoundCloud's grey */
+    --button-tertiary-background-color: #000000 !important;
+    --button-tertiary-disabled-background-color: #000000 !important;
+    --button-tertiary-selected-background-color: #000000 !important;
+    --button-tertiary-selected-active-background-color: #000000 !important;
+    --button-tertiary-loading-background-color: #000000 !important;
+    --button-tertiary-active-background-color: #000000 !important;
+
+    /* === Raised surfaces: inputs, buttons, hover === */
+    --highlight-color: #1a1a1a !important;
+    --highlight-rgb: 26, 26, 26 !important;
+    --background-highlight-color: #1a1a1a !important;
+    --button-secondary-background-color: #1a1a1a !important;
+    --button-secondary-disabled-background-color: #1a1a1a !important;
+    --button-secondary-selected-background-color: #1a1a1a !important;
+    --button-secondary-selected-active-background-color: #1a1a1a !important;
+    --button-secondary-loading-background-color: #1a1a1a !important;
+    --button-secondary-active-background-color: #1a1a1a !important;
+    --button-primary-selected-background-color: #1a1a1a !important;
+    --button-primary-selected-active-background-color: #1a1a1a !important;
+    --tag-default-background-color: #1a1a1a !important;
+    --input-default-background-color: #1a1a1a !important;
+    --input-placeholder-background-color: #1a1a1a !important;
+    --input-focused-background-color: #1a1a1a !important;
+    --input-invalid-background-color: #1a1a1a !important;
+
+    /* === As in SoundCloud's dark mode; the title bar and the settings panel read their colours from here === */
+    --primary-color: #ffffff !important;
+    --secondary-color: #999999 !important;
+    --button-special-background-color: #ff5500 !important;
+}
+
+/* the player bar is a raised surface by default; black with a hairline keeps it apart from the page */
+.theme-dark .playControls__inner {
+    background-color: #000000 !important;
+    border-top: 1px solid #1a1a1a !important;
+}
+
+/* Its buttons are raised surfaces too, drawn in the bar's own colour so that they show as bare
+   icons. On a black bar that colour is black, or each one sits in a grey box. */
+.theme-dark .playControls {
+    --highlight-color: #000000 !important;
+    --highlight-rgb: 0, 0, 0 !important;
+    --background-highlight-color: #000000 !important;
+    --button-secondary-background-color: #000000 !important;
+    --button-secondary-disabled-background-color: #000000 !important;
+    --button-secondary-selected-background-color: #000000 !important;
+    --button-secondary-selected-active-background-color: #000000 !important;
+    --button-secondary-loading-background-color: #000000 !important;
+    --button-secondary-active-background-color: #000000 !important;
+}
