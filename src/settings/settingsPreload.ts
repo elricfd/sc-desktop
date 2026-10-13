@@ -2,7 +2,10 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 const SEND_CHANNELS = new Set([
     'apply-changes',
+    'downloads-cancel',
+    'downloads-clear',
     'downloads-open-folder',
+    'downloads-show',
     'setting-changed',
     'show-plugin-homepage-dialog',
     'toggle-settings',
@@ -16,6 +19,7 @@ const INVOKE_CHANNELS = new Set([
     'choose-download-folder',
     'get-current-custom-theme',
     'get-custom-themes',
+    'get-downloads',
     'get-plugins',
     'get-plugins-folder-path',
     'get-themes-folder-path',
@@ -28,7 +32,13 @@ const INVOKE_CHANNELS = new Set([
     'get-accounts',
 ]);
 
-const ON_CHANNELS = new Set(['presence-preview-update', 'theme-changed', 'update-translations', 'accounts-updated']);
+const ON_CHANNELS = new Set([
+    'accounts-updated',
+    'downloads-changed',
+    'presence-preview-update',
+    'theme-changed',
+    'update-translations',
+]);
 
 function isHttpsUrl(value: string): boolean {
     try {

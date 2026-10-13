@@ -197,7 +197,7 @@ document.getElementById('refreshPlugins')?.addEventListener('click', async () =>
 // Settings whose control id is the setting key and which need nothing beyond being stored.
 // prettier-ignore
 const CHECKBOX_SETTINGS = [
-    'hidePromotions', 'hideEventsNearYou', 'hideArtistUpsells', 'downloadButtonEnabled',
+    'hidePromotions', 'hideEventsNearYou', 'hideArtistUpsells', 'downloadsButtonAlways',
     'downloadUseAccount', 'minimizeToTray', 'navigationControlsEnabled', 'trackParserEnabled',
     'autoUpdaterEnabled', 'displayWhenIdling', 'displaySCSmallIcon', 'adBlocker',
     'discordRichPresence', 'displayButtons', 'downloadDrmFallback',
@@ -225,6 +225,14 @@ for (const key of TEXT_SETTINGS) {
         ipcRenderer.send('setting-changed', { key, value: e.target.value });
     });
 }
+
+// The list of downloads at the top is drawn by the popup's own script, downloadsPanel.js, which the
+// build copies in next to this one and the page loads after it. This is what it talks to.
+window.downloadsAPI = {
+    send: ipcRenderer.send,
+    getDownloads: () => ipcRenderer.invoke('get-downloads'),
+    onChanged: (listener) => window.settingsAPI.on('downloads-changed', listener),
+};
 
 document.getElementById('chooseDownloadFolder')?.addEventListener('click', async () => {
     // main shows the native folder picker and stores the choice; this only displays it

@@ -93,7 +93,8 @@ const store = new Store({
         hidePromotions: true,
         hideEventsNearYou: true,
         hideArtistUpsells: true,
-        downloadButtonEnabled: true,
+        // the title bar's downloads button shows while something is downloading; this keeps it there
+        downloadsButtonAlways: false,
         downloadUseAccount: true,
         // empty means the system Downloads folder
         downloadFolder: '',
@@ -599,7 +600,7 @@ function setupWindowControls() {
     ipcMain.handle('is-maximized', () => mainWindow.isMaximized());
     ipcMain.handle('get-minimize-to-tray', () => store.get('minimizeToTray', true));
     ipcMain.handle('get-navigation-controls-enabled', () => store.get('navigationControlsEnabled', false));
-    ipcMain.handle('get-download-button-enabled', () => store.get('downloadButtonEnabled', true));
+    ipcMain.handle('get-download-button-enabled', () => store.get('downloadsButtonAlways', false));
 
     adjustContentViews();
 }
@@ -975,8 +976,12 @@ async function init() {
     themeService.onCustomThemeUpdated(() => applyThemeToContent(isDarkTheme));
     notificationManager = new NotificationManager(mainWindow);
     settingsManager = new SettingsManager(mainWindow, store, translationService);
-    downloadManager = new DownloadManager(mainWindow, store, (active) => {
-        if (!isQuitting) headerContents()?.send('downloads-active', active);
+    downloadManager = new DownloadManager(mainWindow, store, (active, items) => {
+        if (isQuitting) return;
+        headerContents()?.send('downloads-active', active);
+        // the list at the top of the settings panel
+        const settings = settingsManager.getView()?.webContents;
+        if (settings && !settings.isDestroyed()) settings.send('downloads-changed', items);
     });
     proxyService = new ProxyService(() => contentView?.webContents.session ?? null, store, queueToastNotification);
     presenceService = new PresenceService(store, translationService);
@@ -1144,7 +1149,7 @@ async function init() {
             webhookService.setTriggerPercentage(data.value);
         } else if (key === 'navigationControlsEnabled') {
             headerContents()?.send('navigation-controls-toggle', data.value);
-        } else if (key === 'downloadButtonEnabled') {
+        } else if (key === 'downloadsButtonAlways') {
             headerContents()?.send('download-button-toggle', data.value);
         } else if (key === 'autoUpdaterEnabled') {
             if (data.value) setupUpdater();
