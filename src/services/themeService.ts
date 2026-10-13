@@ -6,6 +6,9 @@ import { EventEmitter } from 'events';
 import { extractThemeColors, type ThemeColors } from '../utils/colorExtractor';
 import { parseMetadata, type FileMetadata } from '../utils/metadataParser';
 
+// themes/ from the repository, which the build copies next to the compiled code
+const BUNDLED_THEMES_PATH = join(__dirname, '..', 'themes');
+
 export interface CustomTheme {
     name: string;
     filePath: string;
@@ -47,15 +50,21 @@ export class ThemeService {
     }
 
     private loadCustomThemes(): void {
+        // the user's folder second, so a theme there replaces a bundled one of the same name
+        this.loadThemesFrom(BUNDLED_THEMES_PATH);
+        this.loadThemesFrom(this.themesPath);
+    }
+
+    private loadThemesFrom(themesPath: string): void {
         try {
-            if (!existsSync(this.themesPath)) {
+            if (!existsSync(themesPath)) {
                 return;
             }
 
-            const files = readdirSync(this.themesPath);
+            const files = readdirSync(themesPath);
 
             for (const file of files) {
-                const filePath = join(this.themesPath, file);
+                const filePath = join(themesPath, file);
                 const stat = statSync(filePath);
 
                 if (stat.isFile() && extname(file).toLowerCase() === '.css') {

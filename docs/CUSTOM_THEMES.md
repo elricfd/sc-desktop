@@ -52,7 +52,10 @@ body {
 
 ## Theme Locations
 
-Themes are stored in your user data directory:
+The themes in this repository's `themes/` folder (OLED, Gruvbox) ship with the app and are always in the dropdown. A
+file of the same name in your own folder takes the place of the bundled one.
+
+Your own themes are stored in your user data directory:
 
 - **Windows**: `%APPDATA%\sc-desktop\themes\`
 - **macOS**: `~/Library/Application Support/sc-desktop/themes/`
