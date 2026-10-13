@@ -105,6 +105,10 @@ setInterval(() => {
     cleanShareDialog();
     watchFrames();
 
+    // the header's "Artist Studio" link, which is a bare label; SoundCloud puts its own back on a re-render
+    const artistLink = document.querySelector('.header__forArtistsButton');
+    if (artistLink && artistLink.textContent !== 'Artist') artistLink.textContent = 'Artist';
+
     const text = (selector: string) => document.querySelector<HTMLElement>(selector)?.innerText.trim() ?? '';
     const ownProfile = document.querySelector<HTMLAnchorElement>(
         '.header__userNav [data-menu-name="profile"], .header__userNavUsernameButton',
