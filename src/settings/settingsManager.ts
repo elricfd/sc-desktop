@@ -26,6 +26,7 @@ export class SettingsManager {
     private devMode = process.argv.includes('--dev');
     // key returned by insertCSS for the current theme-colour stylesheet
     private themeColorCssKey: string | null = null;
+    private themeColorQueue: Promise<void> = Promise.resolve();
 
     constructor(parentWindow: BrowserWindow, store: ElectronStore, translationService: TranslationService) {
         this.parentWindow = parentWindow;
@@ -329,7 +330,14 @@ export class SettingsManager {
         }, HIDE_MS);
     }
 
-    public async setThemeColors(colors: ThemeColors | null): Promise<void> {
+    // One at a time: two that overlap would both insert a stylesheet, and the one whose key is not
+    // kept would stay for good, colours and all.
+    public setThemeColors(colors: ThemeColors | null): Promise<void> {
+        this.themeColorQueue = this.themeColorQueue.then(() => this.replaceThemeColors(colors));
+        return this.themeColorQueue;
+    }
+
+    private async replaceThemeColors(colors: ThemeColors | null): Promise<void> {
         if (!this.view || this.view.webContents.isDestroyed()) return;
         const webContents = this.view.webContents;
 
@@ -348,11 +356,12 @@ export class SettingsManager {
 
         if (!colors) return;
 
+        // !important: an inserted stylesheet sorts before the page's own, so settingsPanel.css would win
         const css = `:root {
-            --bg-primary: ${colors.surface || colors.background};
-            --bg-secondary: ${colors.background};
-            --text-primary: ${colors.text};
-            --accent: ${colors.accent || colors.primary};
+            --bg-primary: ${colors.surface || colors.background} !important;
+            --bg-secondary: ${colors.background} !important;
+            --text-primary: ${colors.text} !important;
+            --accent: ${colors.accent || colors.primary} !important;
         }`;
 
         try {
