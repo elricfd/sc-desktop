@@ -1308,13 +1308,31 @@ function setupThemeHandlers() {
 
 // per webContents rather than per target: every tab is a 'content' view with its own stylesheet key
 const insertedThemeCssKeys = new WeakMap<WebContents, string>();
+const themeCssQueues = new WeakMap<WebContents, Promise<void>>();
 
-async function applyCustomThemeCss(
+// One at a time per view. Picking a theme applies it several times over in quick succession, and two
+// runs that overlap both insert a stylesheet while only one key is kept: the other then outlives
+// every later change of theme, until the page is reloaded.
+function applyCustomThemeCss(
     target: 'content' | 'header' | 'settings',
     webContents: WebContents | null | undefined,
     css: string,
 ): Promise<void> {
-    if (!webContents || webContents.isDestroyed()) return;
+    if (!webContents || webContents.isDestroyed()) return Promise.resolve();
+
+    const run = (themeCssQueues.get(webContents) ?? Promise.resolve()).then(() =>
+        replaceCustomThemeCss(target, webContents, css),
+    );
+    themeCssQueues.set(webContents, run);
+    return run;
+}
+
+async function replaceCustomThemeCss(
+    target: 'content' | 'header' | 'settings',
+    webContents: WebContents,
+    css: string,
+): Promise<void> {
+    if (webContents.isDestroyed()) return;
 
     const previousKey = insertedThemeCssKeys.get(webContents);
     if (previousKey) {
