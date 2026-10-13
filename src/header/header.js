@@ -454,9 +454,23 @@ function syncSearch(url) {
 // Downloads: opens the progress popup. Shown, and lit up, while something is downloading; the
 // rest of the time only if Settings says to keep it.
 const downloadsBtn = document.getElementById('downloads-btn');
+let downloadsButtonAlways = false;
+let downloadsActive = false;
+
+function updateDownloadsButton() {
+    downloadsBtn?.classList.toggle('hidden', !downloadsButtonAlways && !downloadsActive);
+    downloadsBtn?.classList.toggle('active', downloadsActive);
+}
+
 downloadsBtn?.addEventListener('click', () => ipcRenderer.send('toggle-downloads'));
-ipcRenderer.on('download-button-toggle', (_, enabled) => downloadsBtn?.classList.toggle('hidden', !enabled));
-ipcRenderer.on('downloads-active', (_, active) => downloadsBtn?.classList.toggle('active', active > 0));
+ipcRenderer.on('download-button-toggle', (_, always) => {
+    downloadsButtonAlways = always;
+    updateDownloadsButton();
+});
+ipcRenderer.on('downloads-active', (_, active) => {
+    downloadsActive = active > 0;
+    updateDownloadsButton();
+});
 
 document.getElementById('menu-btn')?.addEventListener('click', () => ipcRenderer.send('toggle-settings'));
 
@@ -491,8 +505,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (enabled) setNavigationControlsVisible(true);
     });
 
-    ipcRenderer.invoke('get-download-button-enabled').then((enabled) => {
-        downloadsBtn?.classList.toggle('hidden', !enabled);
+    ipcRenderer.invoke('get-download-button-enabled').then((always) => {
+        downloadsButtonAlways = always;
+        updateDownloadsButton();
     });
 
     // tabs opened before this page finished loading

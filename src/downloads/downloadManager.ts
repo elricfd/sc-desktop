@@ -34,6 +34,8 @@ import {
 const isMac = process.platform === 'darwin';
 const HEADER_HEIGHT = 32;
 const MAX_CONCURRENT = 2;
+// how many finished downloads the list remembers across restarts
+const MAX_HISTORY = 50;
 
 interface DownloadItem {
     id: number;
@@ -68,7 +70,7 @@ export class DownloadManager {
     private view: BrowserView | null = null;
     private parentWindow: BrowserWindow;
     private store: ElectronStore;
-    private onActiveChange: (active: number) => void;
+    private onChange: (active: number, items: DownloadItem[]) => void;
     private themeColors: ThemeColors | null = null;
     private devMode = process.argv.includes('--dev');
     // newest first, which is the order the popup lists them in
@@ -79,10 +81,20 @@ export class DownloadManager {
     private nextId = 1;
     private pushTimer: NodeJS.Timeout | null = null;
 
-    constructor(parentWindow: BrowserWindow, store: ElectronStore, onActiveChange: (active: number) => void) {
+    /** `onChange` hears how many downloads are running and gets the list, for views other than the popup. */
+    constructor(
+        parentWindow: BrowserWindow,
+        store: ElectronStore,
+        onChange: (active: number, items: DownloadItem[]) => void,
+    ) {
         this.parentWindow = parentWindow;
         this.store = store;
-        this.onActiveChange = onActiveChange;
+        this.onChange = onChange;
+
+        // earlier downloads, as `save` left them
+        const history: unknown = store.get('downloadHistory', []);
+        if (Array.isArray(history)) this.items = history as DownloadItem[];
+        this.nextId = Math.max(0, ...this.items.map((item) => item.id)) + 1;
 
         this.parentWindow.on('resize', () => this.updateBounds());
         this.setupIpcHandlers();
@@ -121,6 +133,12 @@ export class DownloadManager {
         });
         this.show();
         this.runQueued();
+    }
+
+    // What is over and done with is kept for the next start; what is still running then would never finish.
+    private save(): void {
+        const finished = this.items.filter((item) => !this.processes.has(item.id) && item.status !== 'queued');
+        this.store.set('downloadHistory', finished.slice(0, MAX_HISTORY));
     }
 
     private runQueued(): void {
@@ -190,6 +208,7 @@ export class DownloadManager {
             } catch {
                 // the tracks are saved, and each carries its own cover
             }
+            this.save();
             this.runQueued();
         };
 
@@ -459,7 +478,7 @@ export class DownloadManager {
             if (this.view && !this.view.webContents.isDestroyed()) {
                 this.view.webContents.send('downloads-changed', this.items);
             }
-            this.onActiveChange(this.processes.size);
+            this.onChange(this.processes.size, this.items);
         }, 200);
     }
 
@@ -545,6 +564,7 @@ export class DownloadManager {
             'downloads-clear',
             trustedOn(() => {
                 this.items = this.items.filter((item) => this.processes.has(item.id) || item.status === 'queued');
+                this.save();
                 this.changed();
             }, 'downloads-clear'),
         );
@@ -656,7 +676,8 @@ export class DownloadManager {
                 grid-column: 1;
             }
             .row button {
-                grid-row: span 3;
+                grid-column: 2;
+                grid-row: 1 / span 3;
             }
             progress {
                 width: 100%;

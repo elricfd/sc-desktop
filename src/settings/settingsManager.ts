@@ -153,7 +153,14 @@ export class SettingsManager {
             ${hint('customThemeDescription')}`;
 
         const downloads = `
-            ${toggle('downloadButtonEnabled', 'showDownloadButton', store.get('downloadButtonEnabled', true))}
+            <p class="hint" id="empty" data-i18n="noDownloads">${t('noDownloads')}</p>
+            <div id="list"></div>
+            <details id="drm" hidden>
+                <summary></summary>
+                <div id="drm-list"></div>
+            </details>
+            <div class="buttons">${button('clear', 'clearDownloads')}</div>
+            ${toggle('downloadsButtonAlways', 'showDownloadButton', store.get('downloadsButtonAlways', false))}
             ${toggle('downloadUseAccount', 'downloadUseAccount', store.get('downloadUseAccount', true))}
             <label class="field">
                 ${text('downloadTemplate')}
@@ -278,9 +285,9 @@ export class SettingsManager {
             </button>
         </header>
         <main>
+            ${section('downloads', downloads)}
             ${section('general', general)}
             ${section('appearance', appearance)}
-            ${section('downloads', downloads)}
             ${section('accounts', accounts)}
             ${section('discord', discord)}
             ${section('lastfm', lastFm)}
@@ -291,7 +298,8 @@ export class SettingsManager {
         <footer>
             <button type="button" class="btn primary" id="applyChanges" data-i18n="applyChanges">${t('applyChanges')}</button>
         </footer>
-        <script src="/settingsPanel.js"></script>`;
+        <script src="/settingsPanel.js"></script>
+        <script src="/downloadsPanel.js"></script>`;
     }
 
     private show(): void {

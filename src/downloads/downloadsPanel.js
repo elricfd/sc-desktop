@@ -1,5 +1,9 @@
 // Downloads popup behaviour. A separate file because the page is served under a CSP that refuses
 // inline script -- see src/utils/appProtocol.ts.
+//
+// The settings panel loads it too, for the list at its top: it has #list, #empty, #drm and #clear like
+// the popup, and settingsPanel.js stands in for downloadsAPI. Top-level names here share that page
+// with settingsPanel.js.
 
 const api = window.downloadsAPI;
 const list = document.getElementById('list');
@@ -128,9 +132,9 @@ list.addEventListener('click', (e) => {
     if (button) api.send(button.dataset.action, Number(button.closest('.row').dataset.id));
 });
 
-document.getElementById('open-folder').addEventListener('click', () => api.send('downloads-open-folder'));
+document.getElementById('open-folder')?.addEventListener('click', () => api.send('downloads-open-folder'));
 document.getElementById('clear').addEventListener('click', () => api.send('downloads-clear'));
-document.getElementById('close').addEventListener('click', () => api.send('toggle-downloads'));
+document.getElementById('close')?.addEventListener('click', () => api.send('toggle-downloads'));
 
 api.onChanged(render);
 api.getDownloads().then(render);
