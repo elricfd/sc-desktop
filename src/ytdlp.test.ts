@@ -4,6 +4,7 @@ import {
     buildArgs,
     DEFAULT_FOLDER,
     DEFAULT_TEMPLATE,
+    deezerSearchUrl,
     drmId,
     findYtDlp,
     hasFfmpeg,
@@ -12,7 +13,9 @@ import {
     parseLine,
     parsePlaylist,
     parseTrack,
+    pickDeezer,
     playlistArgs,
+    searchArgs,
     skipReason,
 } from './utils/ytdlp';
 
@@ -184,6 +187,14 @@ describe('skipReason', () => {
 });
 
 describe('the DRM-protected tracks', () => {
+    const track = {
+        id: '2119862316',
+        name: 'Flume - Easy Goodbye',
+        artist: 'Emma Louise, Flume',
+        title: 'Easy Goodbye',
+        duration: 254.343,
+    };
+
     it('takes the id from a DRM failure and from nothing else', () => {
         expect(drmId('ERROR: [soundcloud] 2119862316: This video is DRM protected')).toBe('2119862316');
         expect(drmId('WARNING: [soundcloud] 2119862316: This video is DRM protected')).toBeNull();
@@ -201,15 +212,51 @@ describe('the DRM-protected tracks', () => {
         expect(lookupArgs(['1'])).not.toContain('--config-locations');
     });
 
-    it('names a track from the line yt-dlp really prints', () => {
-        expect(parseTrack('SCRPC_TRACK {"id":"2119862316","uploader":"Flume","title":"Easy Goodbye"}')).toEqual({
-            id: '2119862316',
-            name: 'Flume - Easy Goodbye',
+    it('describes a track from the line yt-dlp really prints', () => {
+        expect(
+            parseTrack(
+                'SCRPC_TRACK {"id":"2119862316","uploader":"Flume","artist":"Emma Louise, Flume",' +
+                    '"title":"Easy Goodbye","duration":254.343}',
+            ),
+        ).toEqual(track);
+        // with no artist credited, the uploader is the one to search for
+        expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":"A","artist":null,"title":"B","duration":null}')).toEqual({
+            id: '1',
+            name: 'A - B',
+            artist: 'A',
+            title: 'B',
+            duration: null,
         });
-        expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":null,"title":"B"}')).toEqual({ id: '1', name: 'B' });
+        expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":null,"title":"B"}')).toMatchObject({ id: '1', name: 'B' });
         expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":null,"title":null}')).toBeNull();
         expect(parseTrack('SCRPC_TRACK {"id":')).toBeNull();
         expect(parseTrack('SCRPC_FILE {"file":"/music/A - B.mp3"}')).toBeNull();
+    });
+
+    it('searches YouTube for the track and names the file after SoundCloud, as plain text', () => {
+        const args = searchArgs(track, { folder: '/music' });
+        expect(args.slice(-2)).toEqual(['--', 'ytsearch1:Emma Louise, Flume Easy Goodbye']);
+        expect(args[args.indexOf('-o') + 1]).toBe('Emma Louise, Flume - Easy Goodbye.%(ext)s');
+        expect(args[args.indexOf('-f') + 1]).toBe('bestaudio[ext=m4a]/bestaudio');
+        // never signed in to YouTube as the SoundCloud account
+        expect(args).not.toContain('--config-locations');
+
+        const odd = searchArgs({ ...track, artist: '', title: '100% a/b: %(id)s' }, { folder: '/music' });
+        expect(odd[odd.indexOf('-o') + 1]).toBe('100%% a_b_ %%(id)s.%(ext)s');
+    });
+
+    it('takes the Deezer hit of the same length, and only a plain track link', () => {
+        const hit = (link: string, duration: number) => ({ link, duration });
+        const url = 'https://www.deezer.com/track/3419233281';
+        expect(deezerSearchUrl(track)).toBe(
+            'https://api.deezer.com/search?q=Emma+Louise%2C+Flume+Easy+Goodbye&limit=5',
+        );
+        expect(pickDeezer({ data: [hit('https://www.deezer.com/track/1', 199), hit(url, 254)] }, 254.343)).toBe(url);
+        expect(pickDeezer({ data: [hit(url, 199)] }, 254.343)).toBeNull();
+        expect(pickDeezer({ data: [hit(url, 199)] }, null)).toBe(url);
+        expect(pickDeezer({ data: [hit('--portable', 254)] }, 254)).toBeNull();
+        expect(pickDeezer({ error: { code: 4 } }, 254)).toBeNull();
+        expect(pickDeezer(null, 254)).toBeNull();
     });
 });
 

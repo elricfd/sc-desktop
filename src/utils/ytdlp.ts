@@ -44,6 +44,8 @@ export interface DownloadOptions {
     playlistFolder?: string;
     /** the album's or playlist's release year, from `playlistArgs` */
     year?: number | null;
+    /** instead of FORMAT, for a download that is not from SoundCloud */
+    format?: string;
 }
 
 /** Albums and playlists, which both live under /sets/. */
@@ -137,7 +139,7 @@ export function buildArgs(url: string, options: DownloadOptions): string[] {
         // that was already there reports no progress.
         `post_process:${FILE_PREFIX}{"file":%(filepath)j,"index":%(playlist_index|null)j,"count":%(n_entries|null)j}`,
         '-f',
-        FORMAT,
+        options.format ?? FORMAT,
         '-P',
         options.folder,
         '-o',
@@ -167,31 +169,91 @@ export function drmId(line: string): string | null {
     return /^ERROR: \[soundcloud\] (\d+): .*DRM protected/i.exec(line)?.[1] ?? null;
 }
 
+/** A DRM-protected track as SoundCloud describes it: `name` for the popup's list, the rest to look for it elsewhere. */
+export interface TrackInfo {
+    id: string;
+    name: string;
+    artist: string;
+    title: string;
+    duration: number | null;
+}
+
 /**
- * A run that downloads nothing and only names the tracks with these ids, for the popup's list of
- * DRM-protected ones. `--ignore-no-formats-error` is what lets yt-dlp get as far as their titles;
- * `parseTrack` reads the answer.
+ * A run that downloads nothing and only describes the tracks with these ids, for the popup's list of
+ * DRM-protected ones and to look for them elsewhere. `--ignore-no-formats-error` is what lets yt-dlp
+ * get as far as their titles; `parseTrack` reads the answer.
  */
 export function lookupArgs(ids: string[], options: { auth?: boolean } = {}): string[] {
     return [
         ...(options.auth ? ['--config-locations', '-'] : []),
         '--ignore-no-formats-error',
         '--print',
-        `pre_process:${TRACK_PREFIX}{"id":%(id)j,"uploader":%(uploader|null)j,"title":%(title|null)j}`,
+        `pre_process:${TRACK_PREFIX}{"id":%(id)j,"uploader":%(uploader|null)j,"artist":%(artists.0|null)j,` +
+            `"title":%(title|null)j,"duration":%(duration|null)j}`,
         '--',
         ...ids.map((id) => `https://api.soundcloud.com/tracks/${id}`),
     ];
 }
 
-export function parseTrack(line: string): { id: string; name: string } | null {
+export function parseTrack(line: string): TrackInfo | null {
     if (!line.startsWith(TRACK_PREFIX)) return null;
     try {
         const raw = JSON.parse(line.slice(TRACK_PREFIX.length)) as Record<string, unknown>;
         const name = [raw.uploader, raw.title].filter((part) => part && typeof part === 'string').join(' - ');
-        return typeof raw.id === 'string' && name ? { id: raw.id, name } : null;
+        if (typeof raw.id !== 'string' || !name) return null;
+        return {
+            id: raw.id,
+            name,
+            // the artist a label credits, when there is one, and not the label's own account
+            artist: stringOrNull(raw.artist) ?? stringOrNull(raw.uploader) ?? '',
+            title: stringOrNull(raw.title) ?? '',
+            duration: numberOrNull(raw.duration),
+        };
     } catch {
         return null;
     }
+}
+
+const query = (track: TrackInfo) => `${track.artist} ${track.title}`.trim();
+
+/**
+ * The same track from YouTube, for when SoundCloud only has it DRM-protected. Lower quality than
+ * SoundCloud's own stream, which the popup says. m4a because the cover and tags fit into it.
+ * ponytail: takes the first search hit unchecked; compare its duration if wrong songs turn up
+ */
+export function searchArgs(track: TrackInfo, options: { folder: string; tags?: boolean }): string[] {
+    // The name is SoundCloud's, as the hit's own title is anyone's guess. It is literal text in a
+    // template: no path separators, and no % for yt-dlp to read as a field.
+    const name = [track.artist, track.title]
+        .filter(Boolean)
+        .join(' - ')
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
+        .replace(/%/g, '%%');
+    return buildArgs(`ytsearch1:${query(track)}`, {
+        ...options,
+        template: `${name}.%(ext)s`,
+        format: 'bestaudio[ext=m4a]/bestaudio',
+    });
+}
+
+export const deezerSearchUrl = (track: TrackInfo) =>
+    `https://api.deezer.com/search?${new URLSearchParams({ q: query(track), limit: '5' })}`;
+
+/**
+ * The Deezer address of a track, for deemix, out of the answer to `deezerSearchUrl`: the first hit
+ * as long as the track, as a search always finds something. The address is handed to a program,
+ * so anything but a plain track link is refused.
+ */
+export function pickDeezer(body: unknown, duration: number | null): string | null {
+    const hits: unknown = (body as { data?: unknown } | null)?.data;
+    if (!Array.isArray(hits)) return null;
+    const hit = hits.find(
+        (entry) =>
+            /^https:\/\/www\.deezer\.com\/track\/\d+$/.test(entry?.link) &&
+            (duration === null || Math.abs(entry.duration - duration) <= 5),
+    );
+    return hit?.link ?? null;
 }
 
 export interface DownloadProgress {

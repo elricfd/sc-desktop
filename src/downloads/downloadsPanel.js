@@ -52,6 +52,8 @@ function describe(item) {
                 'Done',
                 item.files > 1 ? `${item.files} tracks` : '',
                 item.size ? formatBytes(item.size) : '',
+                // a DRM-protected track that was fetched from YouTube instead
+                item.lowQuality ? `${item.files > 1 ? `${item.lowQuality} ` : ''}low quality (from YouTube)` : '',
                 item.skipped.length ? `${item.skipped.length} skipped (${[...new Set(item.skipped)].join(', ')})` : '',
             );
         case 'cancelled':

@@ -176,7 +176,10 @@ export class SettingsManager {
             </div>
             <p class="hint path" id="downloadFolderPath">${escapeHtml(downloadFolder(store))}</p>
             <div class="field">${input('ytDlpPath', 'ytDlpPath', store.get('ytDlpPath', ''))}</div>
-            ${hint('downloadsDescription')}`;
+            ${hint('downloadsDescription')}
+            ${toggle('downloadDrmFallback', 'downloadDrmFallback', store.get('downloadDrmFallback', true))}
+            <div class="field">${input('deemixPath', 'deemixPath', store.get('deemixPath', ''))}</div>
+            ${hint('downloadDrmFallbackDescription')}`;
 
         const accounts = `
             <div class="row">
