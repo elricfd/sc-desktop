@@ -52,7 +52,10 @@
         "afterPack": "scripts/sign-vmp.js",
         "afterSign": "scripts/sign-vmp.js",
         "mac": {
-            "target": "dmg",
+            "target": [
+                "dmg",
+                "zip"
+            ],
             "icon": "assets/icons/soundcloud-mac.icns",
             "artifactName": "soundcloud-${version}-mac.${ext}",
             "hardenedRuntime": true,
