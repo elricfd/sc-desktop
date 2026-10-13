@@ -35,8 +35,8 @@ On macOS, if the app is reported as damaged, clear the quarantine flag:
 xattr -dr com.apple.quarantine /Applications/SoundCloud.app
 ```
 
-On Linux, make the AppImage executable and run it. It writes its own desktop entry and icon on first launch, and it is
-the only Linux build that updates itself. The tray works out of the box on KDE; GNOME needs a tray extension.
+On Linux, make the AppImage executable and run it. It writes its own desktop entry and icon on first launch. The tray
+works out of the box on KDE; GNOME needs a tray extension.
 
 ```bash
 chmod +x soundcloud-*-linux.AppImage
@@ -55,6 +55,14 @@ SoundCloud does not hand out DRM-protected tracks, so those are looked up by art
 instead. That copy is lower quality, and the downloads list says so. To try Deezer first, install
 [deemix](https://pypi.org/project/deemix/), run it once in a terminal to sign in, and set its path in Settings. The
 fallback can be turned off there too.
+
+### Updates
+
+The app checks for a new release when it starts, fetches it in the background and installs it when you quit. That works
+on Windows, from the AppImage and the .deb on Linux (the .deb asks for your password as the app quits), and on macOS for
+an app that sits in a folder you can write to, such as Applications. The macOS builds are not signed with an Apple
+Developer ID, so the app replaces itself there instead of leaving it to macOS; a release from before 1.2.1 has to be
+updated by hand once. Turn updates off in Settings.
 
 ## Shortcuts
 

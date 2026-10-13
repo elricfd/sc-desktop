@@ -30,6 +30,7 @@ import { ShortcutService } from './services/shortcutService';
 import { PluginService } from './services/pluginService';
 import { audioMonitorScript } from './services/audioMonitorService';
 import { expandShortLinksInMessages } from './services/shortLinkService';
+import { stageMacUpdate } from './services/macUpdateService';
 import { showHomepageConfirmDialog, updateDialogBounds } from './settings/confirmPopup';
 import type { TrackInfo } from './types';
 import { validateTrackUpdatePayload } from './validation';
@@ -178,30 +179,48 @@ if (!process.mas && !app.requestSingleInstanceLock()) {
 let displayWhenIdling = store.get('displayWhenIdling') as boolean;
 let displaySCSmallIcon = store.get('displaySCSmallIcon') as boolean;
 
+let updaterStarted = false;
+
 function setupUpdater() {
     if (!store.get('autoUpdaterEnabled', true)) {
         console.log('Auto-updater disabled by user setting');
         return;
     }
 
-    // updater only works from the appimage on linux
-    if (process.platform === 'linux' && !process.env.APPIMAGE) {
-        console.log('Not running from AppImage, skipping auto-updater');
+    // On Linux an AppImage replaces itself, and a .deb is installed over the old one, which asks for
+    // the password as the app quits. The build marks a package with what it is; anything else, such
+    // as a build unpacked by hand, has nothing to update itself with.
+    const isPackage = existsSync(path.join(process.resourcesPath, 'package-type'));
+    if (process.platform === 'linux' && !process.env.APPIMAGE && !isPackage) {
+        console.log('Neither an AppImage nor a package, skipping auto-updater');
         return;
     }
 
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+    // turning the setting off and on again comes back here; the listeners are only wanted once
+    if (!updaterStarted) {
+        updaterStarted = true;
 
-    autoUpdater.on('update-available', () => {
-        queueToastNotification('Update Available');
-    });
+        // macOS: only the check is electron-updater's. Its download and install are for builds signed
+        // with an Apple Developer ID, which these are not; macUpdateService does both instead.
+        const ownInstall = process.platform === 'darwin';
+        autoUpdater.autoDownload = !ownInstall;
+        autoUpdater.autoInstallOnAppQuit = !ownInstall;
 
-    autoUpdater.on('update-downloaded', () => {
-        queueToastNotification('Update Completed');
-    });
+        autoUpdater.on('update-available', (info: { version?: unknown; files?: unknown }) => {
+            queueToastNotification('Update Available');
+            if (!ownInstall) return;
+            stageMacUpdate(info.version, info.files)
+                .then((staged) => staged && queueToastNotification('Update Completed'))
+                .catch((error) => console.error('Failed to fetch the update:', error));
+        });
 
-    autoUpdater.checkForUpdates();
+        autoUpdater.on('update-downloaded', () => {
+            queueToastNotification('Update Completed');
+        });
+    }
+
+    // offline, or a release that is still being put together: the next start asks again
+    autoUpdater.checkForUpdates().catch((error: unknown) => console.error('Failed to check for updates:', error));
 }
 
 // after a drag-install the dmg stays mounted and the file sits in Downloads; offer to tidy both
