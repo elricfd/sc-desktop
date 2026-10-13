@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 const SEND_CHANNELS = new Set([
     'cancel-refresh',
     'close-window',
+    'header-height',
     'maximize-window',
     'minimize-window',
     'navigate-back',
@@ -24,6 +25,7 @@ const INVOKE_CHANNELS = new Set([
     'get-tab-state',
     'get-theme-colors',
     'is-maximized',
+    'search-suggest',
 ]);
 
 const ON_CHANNELS = new Set([

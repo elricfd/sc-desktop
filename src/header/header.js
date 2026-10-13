@@ -31,6 +31,7 @@ function applyThemeColors(colors) {
         document.documentElement.style.removeProperty('--header-bg');
         document.documentElement.style.removeProperty('--header-text');
         document.documentElement.style.removeProperty('--header-accent');
+        document.documentElement.style.removeProperty('--header-surface');
         resetHeaderColors();
         return;
     }
@@ -38,6 +39,8 @@ function applyThemeColors(colors) {
     document.documentElement.style.setProperty('--header-bg', colors.primary || colors.background);
     document.documentElement.style.setProperty('--header-text', colors.text);
     document.documentElement.style.setProperty('--header-accent', colors.accent || colors.primary);
+    // what the bar itself is painted with below; the suggestions under the search box match it
+    document.documentElement.style.setProperty('--header-surface', colors.surface || colors.background);
 
     const header = document.querySelector('.custom-header');
     if (header) {
@@ -341,7 +344,115 @@ document.getElementById('new-tab-btn')?.addEventListener('click', () => {
     ipcRenderer.send('tab-new');
 });
 
-// Downloads: opens the progress popup, and lights up while something is downloading
+// Search, in place of the box in SoundCloud's own header, with its suggestions underneath.
+const searchInput = document.getElementById('search-input');
+const suggestions = document.getElementById('search-suggestions');
+let suggestTimer = null;
+// what the list on screen, or on its way, is for; an answer for anything else is out of date
+let suggestedFor = '';
+
+function search(query) {
+    if (query) ipcRenderer.send('navigate-url', `https://soundcloud.com/search?q=${encodeURIComponent(query)}`);
+    searchInput.blur();
+}
+
+// The typed text first, as SoundCloud has it, then what main found: the account's own follows, likes
+// and uploads that match, which are places to go, and the searches SoundCloud suggests. None closes the list.
+function showSuggestions(typed, items) {
+    const rows = items.length ? [{ title: typed }, ...items.filter((item) => item.url || item.title !== typed)] : [];
+    suggestions.replaceChildren(
+        ...rows.map((item, position) => {
+            const row = document.createElement('li');
+            row.setAttribute('role', 'option');
+            row.dataset.query = item.title;
+            if (item.url) row.dataset.url = item.url;
+            if (item.image) {
+                const image = document.createElement('img');
+                image.className = item.round ? 'round' : '';
+                image.src = item.image;
+                image.onerror = () => image.remove();
+                row.append(image);
+            }
+            const title = document.createElement('span');
+            // textContent: the suggestions come from soundcloud.com
+            title.textContent = position ? item.title : `Search for “${item.title}”`;
+            row.append(title);
+            return row;
+        }),
+    );
+    suggestions.hidden = !rows.length;
+    // this view ends at the title bar; main stretches it far enough down for the list and its shadow
+    ipcRenderer.send('header-height', rows.length ? Math.ceil(suggestions.getBoundingClientRect().bottom) + 16 : 0);
+}
+
+function closeSuggestions() {
+    clearTimeout(suggestTimer);
+    suggestedFor = '';
+    if (!suggestions.hidden) showSuggestions('', []);
+}
+
+searchInput?.addEventListener('input', () => {
+    clearTimeout(suggestTimer);
+    const typed = searchInput.value.trim();
+    suggestedFor = typed;
+    if (!typed) return closeSuggestions();
+    // not one request per keystroke
+    suggestTimer = setTimeout(async () => {
+        const items = await ipcRenderer.invoke('search-suggest', typed).catch(() => []);
+        if (suggestedFor === typed && document.activeElement === searchInput) showSuggestions(typed, items);
+    }, 150);
+});
+
+// a row that is a place goes there; any other is searched for
+function pick(row) {
+    if (!row.dataset.url) return search(row.dataset.query);
+    ipcRenderer.send('navigate-url', row.dataset.url);
+    searchInput.blur();
+}
+
+document.getElementById('search-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const row = suggestions.querySelector('.active');
+    if (row) pick(row);
+    else search(searchInput.value.trim());
+});
+
+searchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') searchInput.blur();
+    if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || suggestions.hidden) return;
+
+    // up and down the list, round past either end; the box shows the row it is on
+    e.preventDefault();
+    const rows = [...suggestions.children];
+    const current = rows.findIndex((row) => row.classList.contains('active'));
+    const next = (current + (e.key === 'ArrowDown' ? 1 : current < 0 ? 0 : -1) + rows.length) % rows.length;
+    rows[current]?.classList.remove('active');
+    rows[next].classList.add('active');
+    searchInput.value = rows[next].dataset.query;
+});
+
+// mousedown, and prevented: a click would come after the box lost focus, which closes the list
+suggestions?.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const row = e.target.closest('li');
+    if (!row) return;
+    searchInput.value = row.dataset.query;
+    pick(row);
+});
+
+searchInput?.addEventListener('blur', closeSuggestions);
+// not left to the box's blur alone, which does not fire when the whole window goes to the background
+window.addEventListener('blur', closeSuggestions);
+
+// like the page's box did, show what the results on screen are for
+function syncSearch(url) {
+    if (!searchInput || document.activeElement === searchInput) return;
+    const { pathname, searchParams } = URL.parse(url) ?? {};
+    searchInput.value = pathname?.startsWith('/search') ? (searchParams.get('q') ?? '') : '';
+}
+
+// Downloads: opens the progress popup. Shown, and lit up, while something is downloading; the
+// rest of the time only if Settings says to keep it.
 const downloadsBtn = document.getElementById('downloads-btn');
 downloadsBtn?.addEventListener('click', () => ipcRenderer.send('toggle-downloads'));
 ipcRenderer.on('download-button-toggle', (_, enabled) => downloadsBtn?.classList.toggle('hidden', !enabled));
@@ -349,7 +460,10 @@ ipcRenderer.on('downloads-active', (_, active) => downloadsBtn?.classList.toggle
 
 document.getElementById('menu-btn')?.addEventListener('click', () => ipcRenderer.send('toggle-settings'));
 
-ipcRenderer.on('tabs-changed', (_, state) => renderTabs(state));
+ipcRenderer.on('tabs-changed', (_, state) => {
+    renderTabs(state);
+    syncSearch(state.url);
+});
 ipcRenderer.on('focus-url-bar', () => editUrl());
 
 ipcRenderer.on('theme-changed', (_, isDark) => {
@@ -382,7 +496,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // tabs opened before this page finished loading
-    ipcRenderer.invoke('get-tab-state').then(renderTabs);
+    ipcRenderer.invoke('get-tab-state').then((state) => {
+        renderTabs(state);
+        syncSearch(state.url);
+    });
 
     ipcRenderer.invoke('get-theme-colors').then((colors) => {
         if (colors) applyThemeColors(colors);

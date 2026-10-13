@@ -41,6 +41,7 @@ import { installStoreReadCache } from './utils/storeCache';
 import { deriveBrowserUserAgent } from './utils/userAgent';
 import { ejectDmg, findInstallerDmg } from './utils/installerDmg';
 import { DEFAULT_FOLDER, DEFAULT_TEMPLATE } from './utils/ytdlp';
+import { readSuggestions, suggestScript } from './utils/searchSuggest';
 import { presentAsChrome } from './utils/chromeIdentity';
 import {
     EMPTY_PAGE_INFO,
@@ -161,6 +162,8 @@ applyMacMemoryOptimizations();
 // privileged schemes have to be declared before the app is ready
 registerAppScheme();
 const HEADER_HEIGHT = 32;
+// how far down the header view reaches: past the title bar while the search box's suggestions are open
+let headerHeight = HEADER_HEIGHT;
 
 // the Mac App Store sandbox already enforces a single instance
 if (!process.mas && !app.requestSingleInstanceLock()) {
@@ -461,7 +464,7 @@ function adjustContentViews() {
         x: 0,
         y: 0,
         width,
-        height: HEADER_HEIGHT,
+        height: headerHeight,
     });
 
     contentView.setBounds({
@@ -568,6 +571,26 @@ function setupWindowControls() {
     ipcMain.on(
         'navigate-url',
         trustedOn((_event, input: unknown) => navigateActiveTab(input), 'navigate-url'),
+    );
+    // what SoundCloud's own search box would suggest, asked from the page in front
+    ipcMain.handle(
+        'search-suggest',
+        trustedHandle(async (_event, query: unknown) => {
+            const page = contentView?.webContents;
+            if (typeof query !== 'string' || !query.trim() || query.length > 200) return [];
+            if (!page || page.isDestroyed() || !isSoundCloudUrl(page.getURL())) return [];
+            return readSuggestions(await page.mainFrame.executeJavaScript(suggestScript(query)).catch(() => null));
+        }, 'search-suggest'),
+    );
+    // The suggestions hang below the title bar, which is all the header view covers: while they are
+    // open it is stretched down over the page, on top of it.
+    ipcMain.on(
+        'header-height',
+        trustedOn((_event, height: unknown) => {
+            headerHeight = typeof height === 'number' && height > HEADER_HEIGHT ? Math.min(height, 480) : HEADER_HEIGHT;
+            if (headerHeight > HEADER_HEIGHT && headerView) mainWindow.setTopBrowserView(headerView);
+            adjustContentViews();
+        }, 'header-height'),
     );
     ipcMain.handle('get-tab-state', () => tabState());
     ipcMain.handle('is-maximized', () => mainWindow.isMaximized());
@@ -927,6 +950,8 @@ async function init() {
     mainWindow.addBrowserView(headerView);
     headerView.setBounds({ x: 0, y: 0, width: mainWindow.getBounds().width, height: HEADER_HEIGHT });
     headerView.setAutoResize({ width: true, height: false });
+    // see-through below the title bar, for when it reaches over the page (see 'header-height')
+    headerView.setBackgroundColor('#00000000');
     applyNavigationPolicy(headerView.webContents);
     markTrustedSender(headerView.webContents);
     headerView.webContents.loadFile(path.join(__dirname, 'header', 'header.html'));
@@ -1455,6 +1480,12 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                     ${hidePromotions ? '.l-footer { font-size: 0 !important; line-height: 0 !important; } .l-footer > a { display: none !important; } .l-footer .footer__localeSelector { font-size: 14px !important; line-height: 20px !important; margin-top: 0 !important; }' : ''}
                     
                     ${hideEventsNearYou ? '.velvetCakeModule { display: none !important; }' : ''}
+
+                    /* search lives in the title bar (header.html) */
+                    .header__search { display: none !important; }
+
+                    /* the "..." menu, less its company links; the first list is nothing but those */
+                    .moreMenu .headerMenu__list:has(a[href$="/company/home"]), .moreMenu li:has(> a:is([href="/download"], [href$="/company/newsroom"], [href$="/jobs"], [href*="developers.soundcloud.com"], [href*="store.soundcloud.com"])) { display: none !important; }
                     
 					${hideArtistUpsells ? '.header__upsellWrapper, .creatorSubscriptionsButton.header__creatorUpsell, .artistConnectItem.m-upsellNextPro, .dropdownMenu [href*="checkout.soundcloud.com"], .dropdownMenu *:has(> svg.profileMenu__icon path[fill="#F50"]), .spotlight:has(.spotlight__upsellBanner), .spotlight__upsellBanner, .spotlight__upsellCTA, .sidebarContent:has(.velvetCakeIframe), .artistConnectContainer .tileGallery__sliderPeekForward, .artistConnectContainer .tileGallery__sliderPeekBackward, .MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }' : ''}
                 \`;
