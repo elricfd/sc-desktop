@@ -29,6 +29,7 @@ import { ThemeService } from './services/themeService';
 import { ShortcutService } from './services/shortcutService';
 import { PluginService } from './services/pluginService';
 import { audioMonitorScript } from './services/audioMonitorService';
+import { expandShortLinksInMessages } from './services/shortLinkService';
 import { showHomepageConfirmDialog, updateDialogBounds } from './settings/confirmPopup';
 import type { TrackInfo } from './types';
 import { validateTrackUpdatePayload } from './validation';
@@ -714,6 +715,9 @@ async function startTab(tab: Tab, url: string): Promise<void> {
     if (header) {
         await presentAsChrome(webContents, header, app.userAgentFallback).catch((error) =>
             console.error('Failed to set Chrome client hints:', error),
+        );
+        await expandShortLinksInMessages(webContents).catch((error) =>
+            console.error('Failed to set up short link expansion:', error),
         );
     }
     if (!tabs.includes(tab) || isQuitting) return; // closed while it was being set up
