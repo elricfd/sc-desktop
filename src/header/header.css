@@ -157,6 +157,114 @@ body.platform-darwin .navigation-controls {
     min-width: 16px;
 }
 
+/* SoundCloud's search box, which main.ts hides in the page itself */
+.header-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1 220px;
+    min-width: 90px;
+    height: 22px;
+    margin-left: 8px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border-radius: 8px;
+    background-color: var(--hover-bg);
+    -webkit-app-region: no-drag;
+}
+
+.header-search svg {
+    flex: none;
+    opacity: 0.6;
+}
+
+.header-search input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font:
+        12px -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+    user-select: text;
+}
+
+.header-search input::placeholder {
+    color: inherit;
+    opacity: 0.5;
+}
+
+.header-search input::-webkit-search-cancel-button {
+    display: none;
+}
+
+/* SoundCloud's suggestions for what is being typed. They hang below the title bar, which is as far
+   as this view reaches: header.js has main.ts stretch it down over the page while they are open. */
+.header-search {
+    position: relative;
+}
+
+.search-suggestions {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 280px;
+    margin: 0;
+    padding: 4px;
+    box-sizing: border-box;
+    list-style: none;
+    border: 1px solid var(--hover-bg);
+    border-radius: 8px;
+    /* --header-surface is the custom theme's, when there is one */
+    background-color: var(--header-surface, var(--header-bg));
+    color: var(--header-text);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    font:
+        13px -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+    -webkit-app-region: no-drag;
+}
+
+.search-suggestions li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.search-suggestions span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the picture of a person or track of the account's own */
+.search-suggestions img {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    object-fit: cover;
+}
+
+.search-suggestions img.round {
+    border-radius: 50%;
+}
+
+.search-suggestions li:hover,
+.search-suggestions li.active {
+    background-color: var(--hover-bg);
+}
+
 /* Tabs, laid out like Safari's compact tab bar: one pill, with the selected tab doubling as the URL bar */
 .tab-group {
     display: flex;
