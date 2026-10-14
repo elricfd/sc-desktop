@@ -47,9 +47,8 @@ html.theme-light {
 }
 
 .custom-header {
-    /* back/forward/reload | tabs | downloads, menu, controls; equal outer columns keep tabs centered */
-    display: grid;
-    grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr);
+    /* nav, tabs | drag gap | search, downloads, menu, window controls */
+    display: flex;
     align-items: center;
     height: 32px;
     background-color: var(--header-bg);
@@ -84,12 +83,33 @@ html.theme-light {
     height: 100%;
 }
 
-/* macOS traffic lights: pad column, not header, so tabs stay centered */
+/* left: nav + tabs; narrow window shrinks drag gap first, then search, then tabs */
+.header-side:first-child {
+    flex: none;
+    padding-left: 4px;
+}
+
+.header-center {
+    flex: 0 1 auto;
+    margin-left: 4px;
+}
+
+/* right side's children sit in header row itself, so they shrink against tabs */
+.header-side:last-child {
+    display: contents;
+}
+
+/* macOS traffic lights end at 62px: nav and tabs start after them */
 body.platform-darwin .header-side:first-child {
     padding-left: 80px;
 }
 
-body.platform-darwin .header-side:last-child {
+/* fullscreen hides traffic lights */
+body.platform-darwin.fullscreen .header-side:first-child {
+    padding-left: 8px;
+}
+
+body.platform-darwin .custom-header {
     padding-right: 12px;
 }
 
@@ -147,12 +167,12 @@ body.platform-darwin .navigation-controls {
     }
 }
 
-/* draggable spacers either side of tab group, keep it centered */
+/* draggable gap between tabs and search */
 .title-bar {
     align-self: stretch;
     cursor: default;
-    flex: 1 1 16px;
-    min-width: 16px;
+    flex: 1 1 24px;
+    min-width: 24px;
 }
 
 /* SoundCloud's search box; main.ts hides it in page */
@@ -160,10 +180,10 @@ body.platform-darwin .navigation-controls {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 0 1 220px;
+    flex: 0 10 220px;
     min-width: 90px;
     height: 22px;
-    margin-left: 8px;
+    margin: 0 8px;
     padding: 0 8px;
     box-sizing: border-box;
     border-radius: 8px;
@@ -209,7 +229,8 @@ body.platform-darwin .navigation-controls {
 .search-suggestions {
     position: absolute;
     top: calc(100% + 6px);
-    left: 0;
+    /* search sits at right edge: list grows leftwards */
+    right: 0;
     width: 280px;
     margin: 0;
     padding: 4px;

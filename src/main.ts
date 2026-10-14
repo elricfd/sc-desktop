@@ -531,6 +531,10 @@ function setupWindowControls() {
     mainWindow.on('maximize', onMaximizeChange(true));
     mainWindow.on('unmaximize', onMaximizeChange(false));
 
+    // macOS fullscreen hides traffic lights: header drops their gap
+    mainWindow.on('enter-full-screen', () => headerContents()?.send('fullscreen-changed', true));
+    mainWindow.on('leave-full-screen', () => headerContents()?.send('fullscreen-changed', false));
+
     // fires continuously during edge drag: one layout pass per tick is enough
     mainWindow.on('resize', scheduleContentViewAdjust);
 
@@ -611,6 +615,7 @@ function setupWindowControls() {
     );
     ipcMain.handle('get-tab-state', () => tabState());
     ipcMain.handle('is-maximized', () => mainWindow.isMaximized());
+    ipcMain.handle('is-fullscreen', () => mainWindow.isFullScreen());
     ipcMain.handle('get-minimize-to-tray', () => store.get('minimizeToTray', true));
     ipcMain.handle('get-navigation-controls-enabled', () => store.get('navigationControlsEnabled', false));
     ipcMain.handle('get-download-button-enabled', () => store.get('downloadsButtonAlways', false));

@@ -24,6 +24,7 @@ const INVOKE_CHANNELS = new Set([
     'get-navigation-controls-enabled',
     'get-tab-state',
     'get-theme-colors',
+    'is-fullscreen',
     'is-maximized',
     'search-suggest',
 ]);
@@ -32,6 +33,7 @@ const ON_CHANNELS = new Set([
     'download-button-toggle',
     'downloads-active',
     'focus-url-bar',
+    'fullscreen-changed',
     'navigation-controls-toggle',
     'navigation-state-changed',
     'refresh-state-changed',
