@@ -490,6 +490,10 @@ ipcRenderer.on('window-maximized-changed', (_, maximized) => {
     updateWindowControls();
 });
 
+// macOS fullscreen: no traffic lights, header.css drops their gap
+const setFullscreen = (on) => document.body.classList.toggle('fullscreen', on);
+ipcRenderer.on('fullscreen-changed', (_, on) => setFullscreen(on));
+
 ipcRenderer.on('navigation-state-changed', (_, state) => updateNavigationState(state));
 ipcRenderer.on('refresh-state-changed', (_, refreshing) => updateNavigationState({ refreshing }));
 ipcRenderer.on('navigation-controls-toggle', (_, enabled) => setNavigationControlsVisible(enabled));
@@ -524,4 +528,6 @@ document.addEventListener('DOMContentLoaded', () => {
             updateWindowControls();
         }
     });
+
+    ipcRenderer.invoke('is-fullscreen').then(setFullscreen);
 });
