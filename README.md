@@ -11,7 +11,11 @@ A desktop app for SoundCloud, for macOS, Windows and Linux.
 This started as a fork of [richardhbtz/soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) and has changed
 enough since that it now lives on its own.
 
-<img src="assets/preview/soundcloud-preview-dark.png" />
+<img src="assets/preview/soundcloud-preview-dark.webp" alt="sc-desktop in dark mode" />
+
+| OLED theme                                                                             | Light mode                                                                                |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| <img src="assets/preview/soundcloud-preview-oled.webp" alt="sc-desktop, OLED theme" /> | <img src="assets/preview/soundcloud-preview-light.webp" alt="sc-desktop in light mode" /> |
 
 ## What it does
 
