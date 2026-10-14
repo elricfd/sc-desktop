@@ -13,7 +13,7 @@ import { join } from 'path';
 
 const isMac = process.platform === 'darwin';
 const HEADER_HEIGHT = 32;
-// the slide-out transition in settingsPanel.css
+// slide-out transition, settingsPanel.css
 const HIDE_MS = 150;
 const OFF_SCREEN = { x: 0, y: -10000, width: 0, height: 0 };
 
@@ -24,7 +24,7 @@ export class SettingsManager {
     private store: ElectronStore;
     private translationService: TranslationService;
     private devMode = process.argv.includes('--dev');
-    // key returned by insertCSS for the current theme-colour stylesheet
+    // insertCSS key for current theme-colour stylesheet
     private themeColorCssKey: string | null = null;
     private themeColorQueue: Promise<void> = Promise.resolve();
 
@@ -33,7 +33,7 @@ export class SettingsManager {
         this.store = store;
         this.translationService = translationService;
 
-        // the view itself is only built on first open
+        // view only built on first open
         this.parentWindow.on('resize', () => {
             if (this.isVisible) this.updateBounds();
         });
@@ -90,8 +90,7 @@ export class SettingsManager {
         this.view = null;
     }
 
-    // A sidebar on the right: about 38% of the window, held between 360 and 460px, and the whole
-    // window once it is too narrow to share.
+    // right sidebar: ~38% of window, 360-460px; whole window when too narrow
     private updateBounds(): void {
         if (!this.view) return;
         const { width, height } = this.parentWindow.getContentBounds();
@@ -108,7 +107,7 @@ export class SettingsManager {
     private getHtml(): string {
         const { store } = this;
         const t = (key: TranslationKeys) => this.translationService.translate(key);
-        // settingsPanel.js re-translates anything carrying data-i18n when the language changes
+        // settingsPanel.js re-translates data-i18n on language change
         const text = (key: TranslationKeys, tag = 'span', className = '') =>
             `<${tag}${className ? ` class="${className}"` : ''} data-i18n="${key}">${t(key)}</${tag}>`;
         const hint = (key: TranslationKeys) => text(key, 'p', 'hint');
@@ -309,11 +308,11 @@ export class SettingsManager {
         this.updateBounds();
         const applyShowState = () => {
             view.webContents.executeJavaScript(`
-                // force reflow to ensure animation works
+                // force reflow so animation runs
                 document.body.style.opacity;
                 document.body.classList.add('visible');
             `);
-            // trigger translation updates when panel is shown
+            // translation updates on show
             view.webContents.send('update-translations');
             const isDark = this.store.get('theme', 'dark') === 'dark';
             view.webContents.send('theme-changed', isDark);
@@ -332,17 +331,16 @@ export class SettingsManager {
         this.isVisible = false;
         view.webContents.executeJavaScript(`document.body.classList.remove('visible')`).catch(() => {});
 
-        // once the slide-out has played, unless the panel was reopened in the meantime
+        // after slide-out, unless reopened meanwhile
         setTimeout(() => {
             if (this.isVisible || this.view !== view) return;
-            // macOS gives the renderer back; elsewhere the view is kept and parked
+            // macOS frees renderer; elsewhere view kept and parked
             if (isMac) this.teardownView();
             else view.setBounds(OFF_SCREEN);
         }, HIDE_MS);
     }
 
-    // One at a time: two that overlap would both insert a stylesheet, and the one whose key is not
-    // kept would stay for good, colours and all.
+    // serialised: stylesheet whose key is dropped would stay forever
     public setThemeColors(colors: ThemeColors | null): Promise<void> {
         this.themeColorQueue = this.themeColorQueue.then(() => this.replaceThemeColors(colors));
         return this.themeColorQueue;
@@ -352,22 +350,20 @@ export class SettingsManager {
         if (!this.view || this.view.webContents.isDestroyed()) return;
         const webContents = this.view.webContents;
 
-        // colors originate from user-supplied theme files. they are applied as a
-        // stylesheet rather than interpolated into a script, so a crafted value can at
-        // worst produce an invalid CSS declaration -- never executable JavaScript.
+        // user-supplied colors: applied as stylesheet, never script; worst case invalid CSS
         const previousKey = this.themeColorCssKey;
         if (previousKey) {
             this.themeColorCssKey = null;
             try {
                 await webContents.removeInsertedCSS(previousKey);
             } catch {
-                // view navigated since insertion; the old stylesheet is already gone
+                // view navigated since insert; old stylesheet already gone
             }
         }
 
         if (!colors) return;
 
-        // !important: an inserted stylesheet sorts before the page's own, so settingsPanel.css would win
+        // !important: inserted stylesheet sorts before page's own, else settingsPanel.css wins
         const css = `:root {
             --bg-primary: ${colors.surface || colors.background} !important;
             --bg-secondary: ${colors.background} !important;
@@ -386,7 +382,7 @@ export class SettingsManager {
         return this.view;
     }
 
-    /** True only when the panel is built and actually on screen. */
+    /** true only when panel built and on screen */
     public isPanelVisible(): boolean {
         return this.isVisible && this.view !== null && !this.view.webContents.isDestroyed();
     }

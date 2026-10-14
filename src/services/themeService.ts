@@ -6,7 +6,7 @@ import { EventEmitter } from 'events';
 import { extractThemeColors, type ThemeColors } from '../utils/colorExtractor';
 import { parseMetadata, type FileMetadata } from '../utils/metadataParser';
 
-// themes/ from the repository, which the build copies next to the compiled code
+// themes/ from repo; build copies it next to compiled code
 const BUNDLED_THEMES_PATH = join(__dirname, '..', 'themes');
 
 export interface CustomTheme {
@@ -50,7 +50,7 @@ export class ThemeService {
     }
 
     private loadCustomThemes(): void {
-        // the user's folder second, so a theme there replaces a bundled one of the same name
+        // user folder second: its theme replaces bundled one of same name
         this.loadThemesFrom(BUNDLED_THEMES_PATH);
         this.loadThemesFrom(this.themesPath);
     }
@@ -96,7 +96,6 @@ export class ThemeService {
         try {
             if (!existsSync(this.themesPath)) return;
 
-            // Close any previous watcher
             if (this.stopWatching) {
                 this.stopWatching();
                 this.stopWatching = undefined;
@@ -105,16 +104,16 @@ export class ThemeService {
             const watcher = watch(this.themesPath, { persistent: true }, (eventType, filename) => {
                 if (!filename || extname(filename).toLowerCase() !== '.css') return;
 
-                // Debounce rapid events per file
+                // debounce rapid events per file
                 const themeName = basename(filename, '.css');
                 const filePath = join(this.themesPath, filename);
 
                 const handleChange = () => {
                     try {
                         if (eventType === 'rename') {
-                            // File added or removed or renamed – refresh all
+                            // added, removed or renamed: refresh all
                             this.refreshThemes();
-                            // If current theme was removed, clear it
+                            // current theme removed: clear it
                             if (this.currentCustomTheme && !this.customThemes.has(this.currentCustomTheme)) {
                                 this.currentCustomTheme = null;
                                 this.store.delete('customTheme');
@@ -130,7 +129,7 @@ export class ThemeService {
                             }
                         }
 
-                        // If the changed/added file is the current theme, notify listeners
+                        // current theme changed: notify listeners
                         if (this.currentCustomTheme && this.currentCustomTheme === themeName) {
                             this.emitter.emit('custom-theme-updated', themeName);
                         }
@@ -139,7 +138,7 @@ export class ThemeService {
                     }
                 };
 
-                // Minimal debounce using microtask queue (avoids extra timers and still coalesces bursts)
+                // microtask debounce: no extra timers, still coalesces bursts
                 Promise.resolve().then(handleChange);
             });
 
@@ -207,7 +206,7 @@ export class ThemeService {
 
             this.currentCustomTheme = themeName;
             this.store.set('customTheme', themeName);
-            // Notify listeners so UI can update immediately
+            // notify listeners so UI updates now
             this.emitter.emit('custom-theme-updated', themeName);
 
             console.log(`Applied custom theme: ${themeName}`);
@@ -222,7 +221,7 @@ export class ThemeService {
         try {
             this.currentCustomTheme = null;
             this.store.delete('customTheme');
-            // Notify listeners to remove style
+            // notify listeners: remove style
             this.emitter.emit('custom-theme-updated', null);
 
             console.log('Removed custom theme');
@@ -264,7 +263,7 @@ export class ThemeService {
         this.loadCustomThemes();
     }
 
-    // Subscribe to hot-reload notifications when current theme CSS changes
+    // hot-reload: fires when current theme CSS changes
     public onCustomThemeUpdated(listener: (themeName: string | null) => void): () => void {
         this.emitter.on('custom-theme-updated', listener);
         return () => this.emitter.off('custom-theme-updated', listener);

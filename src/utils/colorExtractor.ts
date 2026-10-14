@@ -1,7 +1,4 @@
-/**
- * Utility for extracting colors from CSS theme files
- * Parses CSS custom properties and returns a structured color palette
- */
+/** theme palette from CSS custom properties */
 
 export interface ThemeColors {
     primary: string;
@@ -12,12 +9,11 @@ export interface ThemeColors {
     accent: string;
 }
 
-// Called on every theme application, i.e. every page load, with a stylesheet that only changes
-// when the user picks another theme, so the last result is kept.
+// runs every page load; stylesheet only changes on theme pick, so keep last result
 let lastCss = '';
 let lastColors: ThemeColors | null = null;
 
-/** Reads the palette out of a theme's CSS custom properties. */
+/** palette from theme CSS custom properties */
 export function extractThemeColors(cssContent: string): ThemeColors | null {
     if (!cssContent || cssContent.trim() === '') return null;
 
@@ -31,36 +27,31 @@ export function extractThemeColors(cssContent: string): ThemeColors | null {
 function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
     const colors: Partial<ThemeColors> = {};
 
-    // Helper to parse CSS color values (hex, rgb, rgba, hsl, hsla)
+    // parse hex, rgb/rgba, hsl/hsla or named color
     const parseColorValue = (value: string): string | null => {
         if (!value) return null;
 
-        // Clean up the value
+        // strip !important
         value = value
             .trim()
             .replace(/!important/gi, '')
             .trim();
 
-        // every branch below is fully anchored. a prefix-only test such as /^rgba?\(/
-        // would accept trailing junk after the closing paren, which downstream
-        // consumers could carry into a stylesheet or a script string.
-
-        // Handle hex colors
+        // anchored: prefix-only match would pass trailing junk into stylesheet/script strings
         if (value.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i)) {
             return value;
         }
 
-        // Handle rgb/rgba -- digits, separators and percentages only
+        // rgb/rgba: digits, separators, % only
         if (value.match(/^rgba?\(\s*[0-9.,%\s/]+\)$/i)) {
             return value;
         }
 
-        // Handle hsl/hsla -- same, plus angle units
+        // hsl/hsla: same, plus angle units
         if (value.match(/^hsla?\(\s*[0-9.,%\s/]+(deg|rad|grad|turn)?[0-9.,%\s/]*\)$/i)) {
             return value;
         }
 
-        // Handle named colors
         if (value.match(/^[a-z]+$/i)) {
             return value;
         }
@@ -68,9 +59,8 @@ function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
         return null;
     };
 
-    // Extract CSS variables from the content
+    // first --varName declaration wins
     const extractVariable = (varName: string): string | null => {
-        // Match --varName: value; or --varName: value !important;
         const regex = new RegExp(`--${varName}\\s*:\\s*([^;]+);`, 'i');
         const match = cssContent.match(regex);
         if (match && match[1]) {
@@ -79,10 +69,9 @@ function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
         return null;
     };
 
-    // Priority order for extracting colors
-    // Try to find the most common variable names used in themes
+    // first defined variable wins, else fallback
 
-    // Primary color (for accents, buttons, highlights)
+    // accents, buttons, highlights
     colors.primary =
         extractVariable('primary-color') ||
         extractVariable('button-primary-background-color') ||
@@ -91,14 +80,12 @@ function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
         extractVariable('artist-color') ||
         '#ff5500'; // SoundCloud orange fallback
 
-    // Secondary color
     colors.secondary =
         extractVariable('secondary-color') ||
         extractVariable('button-secondary-background-color') ||
         extractVariable('artist-surface-color') ||
         '#a89984'; // Gruvbox secondary fallback
 
-    // Background color
     colors.background =
         extractVariable('background-surface-color') ||
         extractVariable('surface-color') ||
@@ -106,14 +93,13 @@ function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
         extractVariable('background-base') ||
         '#1d2021'; // Gruvbox background fallback
 
-    // Surface color (for cards, panels)
+    // cards, panels
     colors.surface =
         extractVariable('surface-color') ||
         extractVariable('background-highlight-color') ||
         extractVariable('background-surface') ||
         '#282828'; // Gruvbox surface fallback
 
-    // Text color
     colors.text =
         extractVariable('primary-color') ||
         extractVariable('font-primary-color') ||
@@ -121,7 +107,7 @@ function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
         extractVariable('text-base') ||
         '#ebdbb2'; // Gruvbox text fallback
 
-    // Accent color (for special elements)
+    // special elements
     colors.accent =
         extractVariable('button-special-background-color') ||
         extractVariable('font-special-color') ||
@@ -132,14 +118,10 @@ function extractThemeColorsUncached(cssContent: string): ThemeColors | null {
     return colors as ThemeColors;
 }
 
-/**
- * Convert hex color to rgba with alpha
- */
+/** hex to rgba() string */
 export function hexToRgba(hex: string, alpha: number = 1): string {
-    // Remove # if present
     hex = hex.replace('#', '');
 
-    // Handle 3-character hex
     if (hex.length === 3) {
         hex = hex
             .split('')
@@ -147,7 +129,6 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
             .join('');
     }
 
-    // Parse hex to rgb
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
@@ -155,11 +136,8 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/**
- * Extract RGB values from any color format
- */
+/** rgb components from any color format */
 export function extractRgb(color: string): { r: number; g: number; b: number } | null {
-    // Handle hex
     if (color.startsWith('#')) {
         const hex = color.replace('#', '');
         const fullHex =
@@ -177,7 +155,6 @@ export function extractRgb(color: string): { r: number; g: number; b: number } |
         };
     }
 
-    // Handle rgb/rgba
     const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
     if (rgbMatch) {
         return {
@@ -190,14 +167,11 @@ export function extractRgb(color: string): { r: number; g: number; b: number } |
     return null;
 }
 
-/**
- * Calculate luminance of a color to determine if it's light or dark
- */
+/** WCAG relative luminance, 0.5 when color is unparseable */
 export function getLuminance(color: string): number {
     const rgb = extractRgb(color);
     if (!rgb) return 0.5;
 
-    // Convert to relative luminance
     const rsRGB = rgb.r / 255;
     const gsRGB = rgb.g / 255;
     const bsRGB = rgb.b / 255;
@@ -209,9 +183,7 @@ export function getLuminance(color: string): number {
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/**
- * Determine if a color is light or dark
- */
+/** light/dark split at luminance 0.5 */
 export function isLightColor(color: string): boolean {
     return getLuminance(color) > 0.5;
 }

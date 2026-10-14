@@ -141,28 +141,28 @@ body {
 }
 
 .header {
-    background: rgba(0, 0, 0, 0.1) !important; /* semi-transparent */
-    backdrop-filter: blur(10px) !important; /* applies blur to background */
+    background: rgba(0, 0, 0, 0.1) !important;
+    backdrop-filter: blur(10px) !important;
     -webkit-backdrop-filter: blur(10px) !important;
-    border-radius: 12px !important; /* optional: rounded edges */
+    border-radius: 12px !important;
 }
 
 .playControls__inner {
-    background: rgba(0, 0, 0, 0.1) !important; /* semi-transparent */
-    backdrop-filter: blur(10px) !important; /* applies blur to background */
+    background: rgba(0, 0, 0, 0.1) !important;
+    backdrop-filter: blur(10px) !important;
     -webkit-backdrop-filter: blur(10px) !important;
     border-radius: 12px !important;
 }
 
 .sc-button.sc-button-secondary,
 .sc-button.sc-button-secondary:visited {
-    background: rgb(60, 56, 54, 0.4) !important; /* semi-transparent background */
-    backdrop-filter: blur(8px); /* blur behind */
+    background: rgb(60, 56, 54, 0.4) !important;
+    backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    color: #fff !important; /* white text */
-    border: 2px solid rgba(255, 255, 255, 0.2); /* subtle border */
-    border-radius: 10px; /* rounded corners */
-    padding: 6px 18px; /* spacing */
+    color: #fff !important;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    padding: 6px 18px;
     transition:
         background 0.2s,
         transform 0.2s;

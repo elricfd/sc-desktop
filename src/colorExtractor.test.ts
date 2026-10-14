@@ -25,8 +25,7 @@ describe('extractThemeColors', () => {
     });
 
     it('rejects a value with trailing content after the closing paren', () => {
-        // a prefix-only test such as /^rgba?\(/ would have accepted this, letting the
-        // trailing text through to whatever consumed the colour
+        // prefix-only regex would accept trailing text, passed on to consumer
         const colors = extractThemeColors(`:root { --primary-color: rgb(0,0,0)'); alert(1); //; }`);
         expect(colors?.primary).not.toContain('alert');
     });

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// preload.ts registers its wheel listener at import time, so grab it through stubs
+// preload.ts binds wheel listener at import: grab it via stubs
 const { send } = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock('electron', () => ({ contextBridge: { exposeInMainWorld: vi.fn() }, ipcRenderer: { send } }));
 
@@ -15,11 +15,11 @@ class FakeScroller {
     ) {}
 }
 
-// <html> doubles as the viewport, which scrolls through it
+// <html> is viewport, scrolls through it
 const html = new FakeScroller();
 const body = new FakeScroller();
 const composedPath = vi.fn();
-// what the page's 500ms poll finds for `iframe`
+// what page's 500ms poll finds for `iframe`
 const frames: object[] = [];
 let onWheel: (e: object) => void;
 let onCopy: (e: object) => void;
@@ -27,7 +27,7 @@ let selection = '';
 let now = 0;
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
 
-/** Ten wheel events, 16ms apart like a 60Hz trackpad, that add up to dx / dy. */
+/** 10 wheel events, 16ms apart (60Hz trackpad), summing to dx / dy */
 function swipe(
     dx: number,
     opts: { dy?: number; path?: object[]; ctrlKey?: boolean; shiftKey?: boolean; on?: (e: object) => void } = {},
@@ -46,7 +46,7 @@ function swipe(
     }
 }
 
-// longer than the gap that ends a gesture
+// longer than gesture-ending gap
 const pause = () => {
     now += 500;
 };
@@ -126,7 +126,7 @@ describe('two-finger swipe navigation', () => {
         expect(send).not.toHaveBeenCalled();
 
         pause();
-        swipe(-200, { path: [carousel] }); // already at its edge, so the swipe is ours
+        swipe(-200, { path: [carousel] }); // at edge, so swipe is ours
         expect(send.mock.calls).toEqual([['navigate-back']]);
     });
 
@@ -136,27 +136,27 @@ describe('two-finger swipe navigation', () => {
     });
 
     it('pans a sideways-overflowing page first, then navigates at its edge (soundcloud.com shape)', () => {
-        // <html> stays visible, so <body>'s overflow-x goes to the viewport; body.scrollLeft never moves
-        // even though its metrics show the overflow (measured on the live page: 960 / 792)
+        // <html> visible: body overflow-x goes to viewport, body.scrollLeft never moves
+        // though its metrics show overflow (measured on live page: 960 / 792)
         Object.assign(body, { overflowX: 'auto', scrollWidth: 960, clientWidth: 792 });
         Object.assign(html, { scrollWidth: 960, clientWidth: 792 });
         const path = [body, html];
 
-        swipe(200, { path }); // forward, but the page can still pan right
+        swipe(200, { path }); // forward, but page can still pan right
         expect(send).not.toHaveBeenCalled();
 
         pause();
-        swipe(-200, { path }); // back, already at the left edge
+        swipe(-200, { path }); // back, at left edge
         expect(send.mock.calls).toEqual([['navigate-back']]);
 
         send.mockClear();
         pause();
-        html.scrollLeft = 167.5; // panned all the way right; fractional at some zoom levels
-        swipe(-200, { path }); // back would pan the page left first
+        html.scrollLeft = 167.5; // panned fully right; fractional at some zoom levels
+        swipe(-200, { path }); // back would pan page left first
         expect(send).not.toHaveBeenCalled();
 
         pause();
-        swipe(200, { path }); // forward at the right edge
+        swipe(200, { path }); // forward at right edge
         expect(send.mock.calls).toEqual([['navigate-forward']]);
     });
 
@@ -165,7 +165,7 @@ describe('two-finger swipe navigation', () => {
         ['body', 'hidden', body],
         ['body', 'clip', body],
     ])('does not treat a page with <%s> overflow-x: %s as scrollable', (_tag, value, el) => {
-        el.overflowX = value; // scrollWidth still reports the overflow
+        el.overflowX = value; // scrollWidth still reports overflow
         Object.assign(html, { scrollWidth: 960, clientWidth: 792 });
         swipe(200, { path: [body, html] });
         expect(send.mock.calls).toEqual([['navigate-forward']]);
@@ -180,14 +180,14 @@ describe('swiping over a page SoundCloud renders in an iframe', () => {
         });
         const frameDocument = { documentElement: new FakeScroller(), body: new FakeScroller() };
         frames.push({ contentDocument: frameDocument, contentWindow: { addEventListener } });
-        frames.push({ contentDocument: null }); // cross-origin: left alone
+        frames.push({ contentDocument: null }); // cross-origin: skipped
 
         vi.advanceTimersByTime(1000); // two polls
-        send.mockClear(); // the poll also reports the page's title
+        send.mockClear(); // poll also reports page title
         expect(new Set(addEventListener.mock.calls.map(([, listener]) => listener)).size).toBe(1);
 
         swipe(-200, { on: onFrameWheel });
-        swipe(-200); // going back hides the frame, and the rest of the gesture lands on the page
+        swipe(-200); // back hides frame; rest of gesture lands on page
         expect(send.mock.calls).toEqual([['navigate-back']]);
     });
 });

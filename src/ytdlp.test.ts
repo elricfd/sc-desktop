@@ -142,7 +142,7 @@ describe('albums and playlists', () => {
     it('tells them from tracks by their address', () => {
         expect(isSet('https://soundcloud.com/a/sets/b')).toBe(true);
         expect(isSet('https://soundcloud.com/a/b')).toBe(false);
-        // a track opened from a playlist is still a track
+        // track opened from playlist still counts as track
         expect(isSet('https://soundcloud.com/a/b?in=a/sets/c')).toBe(false);
         expect(isSet('not a url')).toBe(false);
     });
@@ -219,7 +219,7 @@ describe('the DRM-protected tracks', () => {
                     '"title":"Easy Goodbye","duration":254.343}',
             ),
         ).toEqual(track);
-        // with no artist credited, the uploader is the one to search for
+        // no artist credited: search by uploader
         expect(parseTrack('SCRPC_TRACK {"id":"1","uploader":"A","artist":null,"title":"B","duration":null}')).toEqual({
             id: '1',
             name: 'A - B',
@@ -238,7 +238,7 @@ describe('the DRM-protected tracks', () => {
         expect(args.slice(-2)).toEqual(['--', 'ytsearch1:Emma Louise, Flume Easy Goodbye']);
         expect(args[args.indexOf('-o') + 1]).toBe('Emma Louise, Flume - Easy Goodbye.%(ext)s');
         expect(args[args.indexOf('-f') + 1]).toBe('bestaudio[ext=m4a]/bestaudio');
-        // never signed in to YouTube as the SoundCloud account
+        // never YouTube-signed-in as SoundCloud account
         expect(args).not.toContain('--config-locations');
 
         const odd = searchArgs({ ...track, artist: '', title: '100% a/b: %(id)s' }, { folder: '/music' });

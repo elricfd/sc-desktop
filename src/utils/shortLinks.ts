@@ -1,7 +1,7 @@
-// with or without a scheme: message text is whatever its sender typed or pasted
+// scheme optional: message text is whatever sender typed or pasted
 const SHORT_LINK = /(?:https?:\/\/)?\bon\.soundcloud\.com\/([A-Za-z0-9]+)/g;
 
-/** Where a short link's redirect leads, without its tracking parameters; null unless that is soundcloud.com. */
+/** short link's redirect target minus tracking params; null unless soundcloud.com */
 export function canonicalUrl(location: string): string | null {
     try {
         const url = new URL(location);
@@ -12,7 +12,7 @@ export function canonicalUrl(location: string): string | null {
     }
 }
 
-/** Swaps every on.soundcloud.com link in `text` for the address `resolve` finds for it, if any. */
+/** swaps each on.soundcloud.com link in `text` for `resolve`'s address, if any */
 export async function expandShortLinks(
     text: string,
     resolve: (link: string) => Promise<string | null>,

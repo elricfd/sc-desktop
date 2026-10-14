@@ -1,16 +1,16 @@
 export const SOUNDCLOUD_ORIGIN = 'https://soundcloud.com';
 
-/** What the page itself shows, as reported by preload.ts. Empty strings when absent. */
+/** page info from preload.ts; empty strings when absent */
 export interface PageInfo {
-    /** track or playlist title from the page hero */
+    /** track or playlist title from page hero */
     title: string;
     /** uploader of that track or playlist */
     user: string;
-    /** display name on a profile page */
+    /** display name on profile page */
     profile: string;
-    /** path of the signed-in user's own profile, e.g. "/some-user" */
+    /** path of signed-in user's own profile, e.g. "/some-user" */
     ownProfilePath: string;
-    /** cover of the track or playlist, or the profile picture */
+    /** cover of track or playlist, or profile picture */
     artwork: string;
 }
 
@@ -37,13 +37,13 @@ function soundCloudPath(url: string): string | null {
     }
 }
 
-/** URL bar text while it is not focused: the address without the https://soundcloud.com/ prefix. */
+/** URL bar text when unfocused: address minus https://soundcloud.com/ prefix */
 export function displayUrl(url: string): string {
     if (url === 'about:blank') return '';
     return soundCloudPath(url) ?? url;
 }
 
-/** Turns URL bar input into a SoundCloud address, or null when it points anywhere else. */
+/** URL bar input to SoundCloud address, or null if it points elsewhere */
 export function resolveUrlInput(input: string): string | null {
     const text = input.trim();
     if (!text) return null;
@@ -63,11 +63,8 @@ export function resolveUrlInput(input: string): string | null {
     return `${SOUNDCLOUD_ORIGIN}/${path}`;
 }
 
-/**
- * Tab icon: the page's cover or profile picture at thumbnail size, or '' for pages without one
- * (those get the SoundCloud icon). Only SoundCloud's image CDN is accepted, since the URL is read
- * out of the page and ends up as an <img> in the header.
- */
+/** tab icon: page cover or profile picture at thumbnail size, '' without one (gets SoundCloud icon);
+ * only SoundCloud's image CDN accepted, since URL read from page and becomes <img> */
 export function tabIcon(info: PageInfo): string {
     if (!info.title && !info.profile) return '';
     try {
@@ -79,7 +76,7 @@ export function tabIcon(info: PageInfo): string {
     }
 }
 
-/** New position list after dragging the tab at `from` onto the slot at `to`. */
+/** new order after dragging tab at `from` onto slot `to` */
 export function moveItem<T>(items: T[], from: number, to: number): T[] {
     if (from < 0 || from >= items.length || to < 0 || to >= items.length) return items;
     const moved = [...items];
@@ -92,11 +89,7 @@ const pageName = (segment: string) => {
     return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-/**
- * Tab label: "playlist name - author", "uploader - song title", or the name of the SoundCloud page.
- * A profile is named after its owner, except the signed-in user's own, which is "Profile" like
- * SoundCloud's own menu calls it.
- */
+/** tab label: "playlist name - author", "uploader - song title", else page name; own profile is "Profile" */
 export function tabTitle(url: string, info: PageInfo): string {
     const path = soundCloudPath(url);
     if (path === null) {

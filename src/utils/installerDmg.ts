@@ -10,8 +10,8 @@ export interface MountedImage {
     mountPoints: string[];
 }
 
-// `hdiutil info` prints one block per attached image, separated by a line of '=':
-// "image-path : /x/y.dmg" followed by "/dev/diskNsM<TAB>type<TAB>/Volumes/Name" rows.
+// hdiutil info: one block per image, split on '=' lines:
+// "image-path : /x/y.dmg", then "/dev/diskNsM<TAB>type<TAB>/Volumes/Name" rows
 export function parseMountedImages(hdiutilInfo: string): MountedImage[] {
     return hdiutilInfo
         .split(/^=+$/m)
@@ -22,9 +22,9 @@ export function parseMountedImages(hdiutilInfo: string): MountedImage[] {
         .filter((image) => image.imagePath && image.mountPoints.length > 0);
 }
 
-// The disk image this app was dragged out of, if it is still mounted.
+// disk image app was dragged out of, if still mounted
 export async function findInstallerDmg(execPath: string): Promise<{ imagePath: string; mountPoint: string } | null> {
-    // running straight from the image: nothing was installed, and it can't be ejected under us
+    // run straight from image: nothing installed, can't eject under us
     if (process.platform !== 'darwin' || execPath.startsWith('/Volumes/')) return null;
 
     const bundleName = basename(resolve(execPath, '../../..'));

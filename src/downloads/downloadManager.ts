@@ -34,13 +34,13 @@ import {
 const isMac = process.platform === 'darwin';
 const HEADER_HEIGHT = 32;
 const MAX_CONCURRENT = 2;
-// how many finished downloads the list remembers across restarts
+// finished downloads kept across restarts
 const MAX_HISTORY = 50;
 
 interface DownloadItem {
     id: number;
     url: string;
-    /** the track being fetched right now; for a playlist this changes as it goes */
+    /** track being fetched; changes through playlists */
     title: string;
     status: 'queued' | 'downloading' | 'processing' | 'done' | 'error' | 'cancelled';
     downloaded: number | null;
@@ -49,15 +49,15 @@ interface DownloadItem {
     eta: number | null;
     index: number | null;
     count: number | null;
-    /** finished files so far, their combined size, and the last one's path */
+    /** finished file count, total size, last file path */
     files: number;
     size: number;
     file: string;
     /** one `skipReason` per track yt-dlp had to leave out */
     skipped: string[];
-    /** the DRM-protected ones among them by name, looked up once the download is over */
+    /** DRM-protected skipped tracks by name, looked up once done */
     drm: string[];
-    /** how many of `files` are YouTube's copy of a DRM-protected track */
+    /** how many of `files` are YouTube copies of DRM tracks */
     lowQuality: number;
     error: string;
 }
@@ -73,15 +73,15 @@ export class DownloadManager {
     private onChange: (active: number, items: DownloadItem[]) => void;
     private themeColors: ThemeColors | null = null;
     private devMode = process.argv.includes('--dev');
-    // newest first, which is the order the popup lists them in
+    // newest first, as popup lists them
     private items: DownloadItem[] = [];
     private processes = new Map<number, ChildProcess>();
-    // yt-dlp sign-in options per queued download; kept out of `items`, which the popup's renderer receives
+    // yt-dlp sign-in per queued download; not in `items`, which goes to popup renderer
     private auth = new Map<number, string>();
     private nextId = 1;
     private pushTimer: NodeJS.Timeout | null = null;
 
-    /** `onChange` hears how many downloads are running and gets the list, for views other than the popup. */
+    /** `onChange` gets active count and list, for views beside popup */
     constructor(
         parentWindow: BrowserWindow,
         store: ElectronStore,
@@ -100,7 +100,7 @@ export class DownloadManager {
         this.setupIpcHandlers();
     }
 
-    /** `token` is the session's SoundCloud oauth token, or empty to download anonymously. */
+    /** session's SoundCloud oauth token; empty to download anonymously */
     public start(url: string, token = ''): void {
         const auth = authConfig(token);
         if (auth) this.auth.set(this.nextId, auth);
@@ -109,7 +109,7 @@ export class DownloadManager {
         try {
             title = decodeURIComponent(new URL(url).pathname).slice(1) || url;
         } catch {
-            // the address stands in until yt-dlp reports the real title
+            // URL stands in until yt-dlp names it
         }
 
         this.items.unshift({
@@ -135,7 +135,7 @@ export class DownloadManager {
         this.runQueued();
     }
 
-    // What is over and done with is kept for the next start; what is still running then would never finish.
+    // finished items kept for next start; running ones would never finish
     private save(): void {
         const finished = this.items.filter((item) => !this.processes.has(item.id) && item.status !== 'queued');
         this.store.set('downloadHistory', finished.slice(0, MAX_HISTORY));
@@ -162,22 +162,22 @@ export class DownloadManager {
             return;
         }
 
-        // on Windows yt-dlp also finds an ffmpeg that sits next to it
+        // on Windows yt-dlp also finds ffmpeg next to it
         const tags = hasFfmpeg([...searchDirs(), dirname(binary)]);
 
         const folder = downloadFolder(this.store);
         const playlistFolder = isSet(item.url)
             ? (this.store.get('downloadPlaylistFolder', DEFAULT_FOLDER) as string).trim()
             : '';
-        // what the first run of an album or playlist finds out, see `playlistArgs`
+        // album/playlist first run's findings, see `playlistArgs`
         let playlist: PlaylistInfo = { year: null, cover: null };
 
-        // the files so far, the playlist positions they are for, and how many positions there are
+        // files so far, their playlist positions, total position count
         const files = new Set<string>();
         const saved = new Set<number>();
         let count: number | null = null;
         let retried = false;
-        // the ids of the tracks skipped as DRM-protected
+        // ids of tracks skipped as DRM-protected
         const drm = new Set<string>();
 
         // 'error' (could not start) and 'close' can both fire; whichever comes first settles it
@@ -188,17 +188,16 @@ export class DownloadManager {
                 item.status = error ? 'error' : 'done';
                 item.error = error;
             }
-            // measured at the end: a file is reported before its cover and tags are added to it
+            // measured at end, since files are reported before cover/tags are added
             item.size = 0;
             for (const file of files) {
                 try {
                     item.size += statSync(file).size;
                 } catch {
-                    // moved or deleted already; the size is only for display
+                    // moved or deleted already; size is display-only
                 }
             }
-            // The cover goes next to the tracks, unless they went straight into the download folder,
-            // where the next album's cover would take its place.
+            // cover goes beside tracks, unless in download folder, where next album's would replace it
             const [first] = files;
             try {
                 if (playlist.cover && first && relative(folder, dirname(first))) {
@@ -206,7 +205,7 @@ export class DownloadManager {
                 }
                 if (playlist.cover) rmSync(playlist.cover, { force: true });
             } catch {
-                // the tracks are saved, and each carries its own cover
+                // tracks saved already, each carries its own cover
             }
             this.save();
             this.runQueued();
@@ -218,7 +217,7 @@ export class DownloadManager {
                 stdio: ['pipe', 'pipe', 'pipe'],
                 windowsHide: true,
             });
-            // a write to a program that failed to start must not take the app down; 'error' reports it
+            // write to unstarted program must not crash app; 'error' reports it
             child.stdin.on('error', () => {});
             child.stdin.end(input);
             this.processes.set(item.id, child);
@@ -234,7 +233,7 @@ export class DownloadManager {
 
         // What is left to say once nothing more will be tried.
         const conclude = (child: ChildProcess, code: number | null) => {
-            // tracks yt-dlp could not have are skipped, not failed: the rest of an album or playlist still counts
+            // unavailable tracks are skipped, not failed; rest of album/playlist still counts
             if (item.files) return settle(child, '');
             if (item.error) return settle(child, item.error);
             if (!item.skipped.length) return settle(child, `yt-dlp exited with code ${code}`);
@@ -247,28 +246,24 @@ export class DownloadManager {
             );
         };
 
-        // The DRM-protected tracks, before the download is settled. They are looked up and, if Settings
-        // allows, fetched from somewhere that has them without the DRM: Deezer through deemix when its
-        // path is set, otherwise YouTube, which is lower quality. Those neither has stay skipped, and
-        // are named for the popup's list.
-        // ponytail: yt-dlp looks them up one by one, about a second each; ask SoundCloud for all the ids at once if that drags
+        // DRM tracks, before settling: look up, then fetch from Deezer (deemix, if set) or YouTube (lower quality)
+        // ones neither has stay skipped, named in popup list
         const finish = async (child: ChildProcess, code: number | null) => {
             const cancelled = () => item.status === 'cancelled';
-            // One step of it. A step that fails is no failure of the download, so this only ever resolves.
+            // one step; failed step is no download failure, so it only ever resolves
             const step = (program: string, args: string[], onLine: (line: string) => void, input = '') =>
                 new Promise<void>((resolve) => {
                     const next = launch(program, args, input);
                     child = next;
                     createInterface({ input: next.stdout }).on('line', onLine);
-                    // nothing reads it, and a full pipe would stall the program
+                    // nothing reads it; full pipe would stall program
                     next.stderr.resume();
                     next.on('error', () => resolve());
                     next.on('close', () => resolve());
                 });
 
-            // Deezer's copy, through deemix. It names the file as it is set up to, so it downloads to a
-            // folder of its own and whatever turns up there is the track. It gets no stdin: it asks
-            // there for a login it lacks, and must never be answered with the SoundCloud token.
+            // Deezer copy via deemix: names files itself, so downloads to own folder; any file there is track
+            // no stdin: asks for login, must never get SoundCloud token
             const fromDeezer = async (program: string, track: TrackInfo, target: string) => {
                 const temp = mkdtempSync(join(app.getPath('temp'), 'sc-desktop-deemix-'));
                 try {
@@ -303,8 +298,7 @@ export class DownloadManager {
                     auth ?? '',
                 );
 
-                // Next to the tracks that did download.
-                // ponytail: with none, the download folder itself, not the album's; work the folder out if that bothers anyone
+                // next to tracks that did download
                 const [first] = files;
                 const target = first ? dirname(first) : folder;
                 const deemix = (this.store.get('deemixPath', '') as string).trim();
@@ -312,7 +306,7 @@ export class DownloadManager {
 
                 for (const id of [...drm]) {
                     const track = tracks.get(id);
-                    // without a title there is nothing to search for
+                    // no title, nothing to search for
                     if (!elsewhere || !track?.title || cancelled()) continue;
                     Object.assign(item, {
                         status: 'downloading',
@@ -324,7 +318,7 @@ export class DownloadManager {
                     item.title = track.title;
                     this.changed();
 
-                    // Deezer not answering or the file not copying is no reason to give up: YouTube is next
+                    // Deezer no-answer or failed copy: fall through to YouTube
                     let file = deemix ? await fromDeezer(deemix, track, target).catch(() => '') : '';
 
                     if (!file && !cancelled()) {
@@ -350,13 +344,13 @@ export class DownloadManager {
                     drm.delete(id);
                 }
             } catch {
-                // whatever went wrong, the tracks it did not get are still down as skipped
+                // on any error, tracks not fetched stay as skipped
             }
             item.drm = [...drm].map((id) => tracks.get(id)?.name ?? `Track ${id}`);
             conclude(child, code);
         };
 
-        // `items` limits a second pass to the playlist positions the first left without a file
+        // `items` limits second pass to positions first pass left without file
         const pass = (items?: number[]) => {
             const child = start(
                 buildArgs(item.url, {
@@ -376,11 +370,11 @@ export class DownloadManager {
 
                 if ('file' in parsed) {
                     item.file = parsed.file;
-                    // a set, because a second pass over a single track reports its file again
+                    // set: second pass over one track reports file again
                     files.add(parsed.file);
                     item.files = files.size;
                     if (parsed.index) saved.add(parsed.index);
-                    // a second pass counts only the tracks it was asked for
+                    // second pass counts only tracks it asked for
                     if (!retried) count = parsed.count ?? count;
                 } else {
                     const { status, title, ...progress } = parsed.progress;
@@ -388,15 +382,15 @@ export class DownloadManager {
                     else count = progress.count ?? count;
                     Object.assign(item, progress);
                     if (title) item.title = title;
-                    // yt-dlp reports 'finished' once the bytes are in; conversion and tagging follow
+                    // 'finished' comes once bytes are in; conversion and tagging follow
                     item.status = status === 'finished' ? 'processing' : 'downloading';
                 }
                 this.changed();
             });
 
-            // one ERROR line per track yt-dlp gave up on; it carries on with the rest of an album or playlist
+            // one ERROR line per track given up on; yt-dlp carries on with rest
             createInterface({ input: child.stderr }).on('line', (line) => {
-                // a file that could not take its cover or tags is saved all the same
+                // file that can't take cover or tags is still saved
                 if (!line.startsWith('ERROR:') || line.startsWith('ERROR: Postprocessing:')) return;
                 const reason = skipReason(line);
                 item.skipped.push(reason ?? 'failed');
@@ -409,9 +403,7 @@ export class DownloadManager {
                 if (this.processes.get(item.id) !== child) return;
                 if (code === 0) return settle(child, '');
 
-                // A failure with no reason `skipReason` knows to be final is often SoundCloud timing out,
-                // so those tracks get one more go, along with everything else still missing.
-                // ponytail: one immediate retry; add a pause or more attempts if timeouts still get through
+                // no-reason failure is often SoundCloud timeout: retry those and anything still missing
                 const missing = Array.from({ length: count ?? 0 }, (_, i) => i + 1).filter((i) => !saved.has(i));
                 if (item.error && !retried && item.status !== 'cancelled' && (missing.length || !count)) {
                     retried = true;
@@ -428,7 +420,7 @@ export class DownloadManager {
 
         if (!playlistFolder) return pass();
 
-        // An album or playlist that gets a folder starts with a quick run for its year and cover.
+        // album/playlist with folder: quick run first, for year and cover
         const child = start(
             playlistArgs(item.url, {
                 auth: !!auth,
@@ -445,7 +437,7 @@ export class DownloadManager {
         });
         child.on('close', (code) => {
             if (this.processes.get(item.id) !== child) return;
-            // without the year the folder could get the wrong name, so this is not carried on from
+            // no year means wrong folder name, so don't go on
             if (code !== 0 || item.status === 'cancelled') {
                 return settle(child, error || `yt-dlp exited with code ${code}`);
             }
@@ -459,18 +451,17 @@ export class DownloadManager {
 
         item.status = 'cancelled';
         this.auth.delete(item.id);
-        // ponytail: yt-dlp leaves its .part file behind; delete it here if the leftovers bother anyone
         this.processes.get(item.id)?.kill();
         this.changed();
     }
 
-    /** Stops every running download; yt-dlp would otherwise outlive the app. */
+    /** stops running downloads; yt-dlp would outlive app */
     public cancelAll(): void {
-        // cancelled, not just killed: a download that is falling back would go on to its next program
+        // cancel, don't just kill: falling-back download would go on to next program
         for (const id of [...this.processes.keys()]) this.cancel(id);
     }
 
-    // yt-dlp reports progress many times a second per download; the popup gets the whole list at most 5x a second
+    // progress arrives many times per second; list pushed to popup max 5x/s
     private changed(): void {
         if (this.pushTimer) return;
         this.pushTimer = setTimeout(() => {
@@ -518,8 +509,8 @@ export class DownloadManager {
         this.view.webContents.loadURL(appUrl('downloads'));
     }
 
-    // Torn down rather than parked off-screen, like the toast: the popup is rebuilt from `items` on
-    // every open, which is also how it picks up a theme change.
+    // torn down, not parked off-screen like toast: popup rebuilt from `items` on each open
+    // which also picks up theme changes
     private hide(): void {
         if (!this.view) return;
         const view = this.view;
@@ -529,11 +520,11 @@ export class DownloadManager {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (view.webContents as any).destroy();
         } catch {
-            // the window is already gone
+            // window already gone
         }
     }
 
-    // hangs off the header's download button, at the top right
+    // hangs off header's download button, top right
     private updateBounds(): void {
         if (!this.view) return;
         const { width, height } = this.parentWindow.getContentBounds();
@@ -568,7 +559,7 @@ export class DownloadManager {
                 this.changed();
             }, 'downloads-clear'),
         );
-        // the renderer names a download, never a path
+        // renderer names download, never path
         ipcMain.on(
             'downloads-show',
             trustedOn((_event, id: unknown) => {
@@ -671,7 +662,7 @@ export class DownloadManager {
                 white-space: nowrap;
                 text-overflow: ellipsis;
             }
-            /* without this a row with no button puts the detail beside the title and squeezes it to nothing */
+            /* else rows with no button put detail beside title and squeeze it */
             .row > :not(button) {
                 grid-column: 1;
             }

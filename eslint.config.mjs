@@ -32,15 +32,13 @@ export default defineConfig([
         },
 
         rules: {
-            // `import x = require('x')` is how this CommonJS codebase pulls in untyped modules
+            // import x = require() for untyped CJS modules
             '@typescript-eslint/no-require-imports': 'off',
             'no-empty': ['error', { allowEmptyCatch: true }],
         },
     },
     {
-        // Renderer-side scripts. These run in a BrowserView, not in Node, so they need
-        // browser globals -- and they are plain JavaScript, so the TypeScript parser and
-        // its type-aware rules do not apply.
+        // renderer scripts run in BrowserView: browser globals, plain JS, no TS parser
         files: [
             'src/header/**/*.js',
             'src/settings/*.js',

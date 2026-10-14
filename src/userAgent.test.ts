@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chromeBrandList, deriveBrowserUserAgent } from './utils/userAgent';
 
-// Electron's documented default shape: real Chromium UA + app token + Electron token
+// Electron default UA: Chromium UA + app token + Electron token
 const ELECTRON_UA =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) SoundCloud/0.2.0 Chrome/140.0.7339.207 Electron/41.10.3 Safari/537.36';
 
@@ -39,7 +39,7 @@ describe('deriveBrowserUserAgent', () => {
     });
 });
 
-// expected values are Sec-CH-UA headers as sent by real Google Chrome builds of those versions
+// expected: Sec-CH-UA as sent by real Chrome builds
 describe('chromeBrandList', () => {
     const header = (version: string) =>
         chromeBrandList(version, false)

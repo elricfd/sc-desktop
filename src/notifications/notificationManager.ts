@@ -44,7 +44,7 @@ export class NotificationManager {
         try {
             this.parentWindow.removeBrowserView(view);
         } catch {}
-        // a toast lives ~4.5s; its renderer is not worth keeping for the rest of the session
+        // toast lives ~4.5s; renderer not worth keeping beyond that
         try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (view.webContents as any).destroy();
@@ -73,19 +73,19 @@ export class NotificationManager {
         this.isDisplaying = true;
         const message = this.queue.shift();
         const bounds = this.parentWindow.getBounds();
-        const width = 400; // increased from 300
-        const height = 70; // increased from 50
+        const width = 400;
+        const height = 70;
 
         const view = this.ensureView();
         this.parentWindow.addBrowserView(view);
         view.setBounds({
             x: Math.floor((bounds.width - width) / 2),
-            y: bounds.height - height - 100, // increased from 20 to move it up
+            y: bounds.height - height - 100, // raised off bottom edge
             width,
             height,
         });
 
-        // Use theme colors if available
+        // theme colors if set
         const backgroundColor = this.themeColors?.surface || '#303030';
         const textColor = this.themeColors?.text || '#ffffff';
 
@@ -134,7 +134,7 @@ export class NotificationManager {
             <script src="/notificationPanel.js"></script>
         </body>`;
 
-        // Set up one-time IPC listener for this notification
+        // one-time listener for this notification
         ipcMain.once('notification-done', () => {
             setTimeout(() => this.displayNext(), 100);
         });

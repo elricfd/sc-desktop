@@ -8,8 +8,7 @@ interface ProxyData {
 }
 
 export class ProxyService {
-    // Looked up on each use: the proxy belongs on the session soundcloud.com loads through,
-    // and each account has its own (`persist:sc_<accountId>`).
+    // looked up per use: proxy goes on soundcloud.com session, one per account (persist:sc_<accountId>)
     private resolveSession: () => Session | null;
     private store: ElectronStore;
     private onNotification: (message: string) => void;

@@ -3,23 +3,15 @@ import { readFile } from 'fs/promises';
 import { join, extname } from 'path';
 import { resolveAssetPath } from './assetPath';
 
-/**
- * The app's own views (settings, toasts, downloads, the homepage-confirm dialog) are served
- * over this scheme rather than as data: URLs. That gives each one a real origin, so its
- * script can live in a separate file and a strict CSP can be enforced.
- */
+/** app views (settings, toasts, downloads, homepage-confirm): real origin for separate scripts and strict CSP */
 export const APP_SCHEME = 'scrpc';
 
 type DocumentProvider = () => string;
 
 const documentProviders = new Map<string, DocumentProvider>();
 
-/**
- * Must run before `app.whenReady()`.
- *
- * `supportFetchAPI` stays off: with it on and `corsEnabled` off, a custom scheme allows
- * cross-origin reads (GHSA-v3j7-r9gq-3gjw), and these pages have nothing to fetch.
- */
+// before app.whenReady(). supportFetchAPI off: on + corsEnabled off allows cross-origin reads
+// (GHSA-v3j7-r9gq-3gjw); these pages have nothing to fetch
 export function registerAppScheme(): void {
     protocol.registerSchemesAsPrivileged([
         {
@@ -34,10 +26,7 @@ export function registerAppScheme(): void {
     ]);
 }
 
-/**
- * Registers the markup for one view host, e.g. 'settings'. The provider is called on
- * every load, so views that build their document from current settings keep working.
- */
+/** markup per view host, e.g. 'settings'; called every load, so reflects current settings */
 export function provideDocument(host: string, provider: DocumentProvider): void {
     documentProviders.set(host, provider);
 }
@@ -46,14 +35,8 @@ export function appUrl(host: string, path = '/'): string {
     return `${APP_SCHEME}://${host}${path}`;
 }
 
-/**
- * The policy every app-owned page is served with. Scripts come only from this scheme, never
- * inline, so a value that slips past escaping still cannot run; `connect-src 'none'` leaves
- * anything that did run with nowhere to send what it read.
- *
- * Styles keep 'unsafe-inline' because each view ships one inline <style> block. Custom theme
- * CSS goes through webContents.insertCSS(), which page CSP does not apply to.
- */
+// scripts only from this scheme, never inline; connect-src 'none' leaves nowhere to send data
+// 'unsafe-inline' styles for view <style> blocks; theme CSS via insertCSS, which page CSP skips
 const CONTENT_SECURITY_POLICY = [
     "default-src 'none'",
     `script-src ${APP_SCHEME}:`,
@@ -83,10 +66,9 @@ function securityHeaders(contentType: string): HeadersInit {
     };
 }
 
-/** Must run after `app.whenReady()`. */
+/** after `app.whenReady()` */
 export function handleAppScheme(): void {
-    // this module compiles to tsc/utils/, so the output root -- where the view scripts
-    // are copied at build time -- is one level up
+    // compiled to tsc/utils/, so output root (view scripts copied there) is one level up
     const rootDir = join(__dirname, '..');
 
     protocol.handle(APP_SCHEME, async (request) => {
@@ -99,7 +81,6 @@ export function handleAppScheme(): void {
 
         const host = url.hostname;
 
-        // the document itself
         if (url.pathname === '/' || url.pathname === '') {
             const provider = documentProviders.get(host);
             if (!provider) return new Response('Not found', { status: 404 });
@@ -109,8 +90,7 @@ export function handleAppScheme(): void {
             });
         }
 
-        // a static asset belonging to that view, confined to that view's directory so a
-        // crafted request cannot walk out of the app bundle
+        // static asset, confined to view dir so crafted requests can't leave bundle
         const filePath = resolveAssetPath(rootDir, host, url.pathname);
         if (!filePath) return new Response('Forbidden', { status: 403 });
 
@@ -127,7 +107,7 @@ export function handleAppScheme(): void {
     });
 }
 
-/** The <meta> equivalent, for defence in depth if a page is ever loaded another way. */
+/** <meta> equivalent, defence in depth if page loads another way */
 export function cspMetaTag(): string {
     return `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY.replace(/"/g, '&quot;')}">`;
 }

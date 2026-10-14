@@ -28,7 +28,7 @@ describe('presentAsChrome', () => {
             expect(sendCommand).toHaveBeenLastCalledWith('Runtime.runIfWaitingForDebugger', {}, 'worker session'),
         );
 
-        // the tab's own page coming back after a crash is not a child session and was never paused
+        // tab page reloaded after crash: not child session, never paused
         sendCommand.mockClear();
         onMessage({}, 'Inspector.targetReloadedAfterCrash', {}, '');
         expect(sendCommand).not.toHaveBeenCalled();

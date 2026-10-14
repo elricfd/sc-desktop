@@ -1,8 +1,5 @@
-/**
- * Escape a value for interpolation into HTML text or a quoted attribute. The settings and
- * confirm pages are built by string concatenation, so every stored or caller-supplied value
- * in that markup goes through here.
- */
+/** escape for HTML text or quoted attribute: settings and confirm markup is built by concatenation,
+ * so every stored or caller-supplied value goes through here */
 export function escapeHtml(value: unknown): string {
     if (value === undefined || value === null) return '';
 

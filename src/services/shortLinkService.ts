@@ -1,7 +1,7 @@
 import { net, type Session, type WebContents } from 'electron';
 import { canonicalUrl, expandShortLinks } from '../utils/shortLinks';
 
-// what each short link stands for, which never changes
+// short link -> target, never changes
 const resolved = new Map<string, string>();
 
 function resolve(session: Session, link: string): Promise<string | null> {
@@ -9,7 +9,7 @@ function resolve(session: Session, link: string): Promise<string | null> {
     if (known) return Promise.resolve(known);
 
     return new Promise((done) => {
-        // the redirect is the answer, so it is read and not followed
+        // redirect itself is answer: read, don't follow
         const request = net.request({ url: link, method: 'HEAD', redirect: 'manual', session });
         const finish = (location: string | null) => {
             clearTimeout(timer);
@@ -17,7 +17,7 @@ function resolve(session: Session, link: string): Promise<string | null> {
             if (url) resolved.set(link, url);
             done(url || null);
         };
-        // the messages wait on this
+        // messages wait on this
         const timer = setTimeout(() => {
             request.abort();
             finish(null);
@@ -30,14 +30,8 @@ function resolve(session: Session, link: string): Promise<string | null> {
     });
 }
 
-/**
- * Tracks shared from SoundCloud's mobile apps arrive in messages as on.soundcloud.com short links,
- * which the site leaves as bare links: it only builds a player for an address it can read a track or
- * playlist out of. Swapping in the address each one redirects to, in the API responses messages are
- * loaded from, leaves the rest to the site.
- *
- * Rides on the debugger `presentAsChrome` attaches, the only way to rewrite a response.
- */
+/** on.soundcloud.com short links in message API responses get swapped for their redirect targets;
+ * site only builds players for readable track/playlist urls, rewriting needs `presentAsChrome`'s debugger */
 export async function expandShortLinksInMessages(webContents: WebContents): Promise<void> {
     const dbg = webContents.debugger;
 
@@ -52,7 +46,7 @@ export async function expandShortLinksInMessages(webContents: WebContents): Prom
             const result = await expandShortLinks(text, (link) => resolve(webContents.session, link));
             if (result !== text) expanded = result;
         } catch {
-            // a response without a body, such as a redirect or a preflight
+            // no body (redirect, preflight)
         }
 
         const command =
@@ -61,13 +55,13 @@ export async function expandShortLinksInMessages(webContents: WebContents): Prom
                 : dbg.sendCommand('Fetch.fulfillRequest', {
                       requestId,
                       responseCode: params.responseStatusCode,
-                      // the body is handed over decoded, and is now a different length
+                      // body handed over decoded: length changed
                       responseHeaders: (params.responseHeaders as { name: string; value: string }[]).filter(
                           ({ name }) => !/^content-(encoding|length)$/i.test(name),
                       ),
                       body: Buffer.from(expanded).toString('base64'),
                   });
-        // the tab can be gone by the time the answer is ready
+        // tab may be gone by answer time
         command.catch(() => {});
     });
 

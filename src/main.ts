@@ -94,17 +94,17 @@ const store = new Store({
         hidePromotions: true,
         hideEventsNearYou: true,
         hideArtistUpsells: true,
-        // the title bar's downloads button shows while something is downloading; this keeps it there
+        // downloads button shows only while downloading; this keeps it always
         downloadsButtonAlways: false,
         downloadUseAccount: true,
-        // empty means the system Downloads folder
+        // empty: system Downloads folder
         downloadFolder: '',
         downloadTemplate: DEFAULT_TEMPLATE,
-        // empty means albums and playlists get no folder of their own
+        // empty: albums and playlists get no folder
         downloadPlaylistFolder: DEFAULT_FOLDER,
-        // empty means look it up on PATH
+        // empty: look up on PATH
         ytDlpPath: '',
-        // DRM-protected tracks are fetched from elsewhere: Deezer if deemix is set here, else YouTube
+        // DRM tracks come from elsewhere: Deezer if deemix set, else YouTube
         downloadDrmFallback: true,
         deemixPath: '',
         accounts: [{ id: 'default', name: 'Main Account' }],
@@ -114,7 +114,7 @@ const store = new Store({
     encryptionKey: 'soundcloud-rpc-config',
 });
 
-// every get() otherwise re-reads and re-decrypts the whole config file
+// else every get() re-reads and re-decrypts whole config
 installStoreReadCache(store);
 
 let isDarkTheme = store.get('theme') !== 'light';
@@ -137,14 +137,13 @@ let isQuitting = false;
 const devMode = process.argv.includes('--dev');
 const isMac = process.platform === 'darwin';
 
-// No platform has native back/forward UI here, so show the header nav buttons by default. One-time so
-// an opt-out in Settings sticks, and so installs that already persisted the old `false` default get it
-// too. The flag keeps its macOS-era name so Macs that already opted out are not switched back on.
+// no native back/forward UI anywhere: nav buttons default on, once, so opt-outs stick
+// old installs with persisted false get it too; flag keeps macOS-era name for Macs
 if (!store.get('macNavControlsDefaulted', false)) {
     store.set({ navigationControlsEnabled: true, macNavControlsDefaulted: true });
 }
 
-// real engine UA minus the tokens that mark this as Electron; see utils/userAgent.ts
+// real engine UA minus Electron tokens; see utils/userAgent.ts
 app.userAgentFallback = deriveBrowserUserAgent(app.userAgentFallback, app.getName());
 
 function applyMacMemoryOptimizations(): void {
@@ -164,13 +163,13 @@ function applyMacMemoryOptimizations(): void {
 
 applyMacMemoryOptimizations();
 
-// privileged schemes have to be declared before the app is ready
+// privileged schemes: declare before app ready
 registerAppScheme();
 const HEADER_HEIGHT = 32;
-// how far down the header view reaches: past the title bar while the search box's suggestions are open
+// header view reach: past title bar while search suggestions are open
 let headerHeight = HEADER_HEIGHT;
 
-// the Mac App Store sandbox already enforces a single instance
+// MAS sandbox already enforces single instance
 if (!process.mas && !app.requestSingleInstanceLock()) {
     app.quit();
     process.exit(0);
@@ -187,21 +186,19 @@ function setupUpdater() {
         return;
     }
 
-    // On Linux an AppImage replaces itself, and a .deb is installed over the old one, which asks for
-    // the password as the app quits. The build marks a package with what it is; anything else, such
-    // as a build unpacked by hand, has nothing to update itself with.
+    // linux: AppImage replaces itself; .deb install asks for password as app quits
+    // build marks packages with package-type file; hand-unpacked builds can't self-update
     const isPackage = existsSync(path.join(process.resourcesPath, 'package-type'));
     if (process.platform === 'linux' && !process.env.APPIMAGE && !isPackage) {
         console.log('Neither an AppImage nor a package, skipping auto-updater');
         return;
     }
 
-    // turning the setting off and on again comes back here; the listeners are only wanted once
+    // toggling setting re-enters here: attach listeners once
     if (!updaterStarted) {
         updaterStarted = true;
 
-        // macOS: only the check is electron-updater's. Its download and install are for builds signed
-        // with an Apple Developer ID, which these are not; macUpdateService does both instead.
+        // macOS: electron-updater only checks; builds lack Developer ID, so macUpdateService downloads and installs
         const ownInstall = process.platform === 'darwin';
         autoUpdater.autoDownload = !ownInstall;
         autoUpdater.autoInstallOnAppQuit = !ownInstall;
@@ -219,17 +216,17 @@ function setupUpdater() {
         });
     }
 
-    // offline, or a release that is still being put together: the next start asks again
+    // offline or release not yet published: next start asks again
     autoUpdater.checkForUpdates().catch((error: unknown) => console.error('Failed to check for updates:', error));
 }
 
-// after a drag-install the dmg stays mounted and the file sits in Downloads; offer to tidy both
+// after drag-install: dmg stays mounted, installer sits in Downloads; offer to tidy both
 async function offerInstallerCleanup() {
     if (process.platform !== 'darwin' || !app.isPackaged) return;
 
     try {
         const installer = await findInstallerDmg(process.execPath);
-        // asked once per image: "Keep" shouldn't nag on every launch until the next reboot
+        // asked once per image: "Keep" must not nag every launch
         if (!installer || store.get('installerDmgKept') === installer.imagePath) return;
 
         const { response } = await dialog.showMessageBox(mainWindow, {
@@ -257,8 +254,8 @@ async function offerInstallerCleanup() {
     }
 }
 
-// appimages don't install a desktop file, so wayland compositors can't match the window
-// to an icon and you get the generic cog. write one to ~/.local/share on first run
+// appimages install no desktop file: wayland can't match window to icon, shows generic cog
+// writes one to ~/.local/share on first run
 function installDesktopFile() {
     if (process.platform !== 'linux' || !process.env.APPIMAGE) return;
 
@@ -285,7 +282,7 @@ function installDesktopFile() {
             '',
         ].join('\n');
 
-        // rewrite if missing or the appimage moved
+        // rewrite if missing or appimage moved
         const existing = existsSync(desktopFilePath) ? readFileSync(desktopFilePath, 'utf8') : '';
         if (existing !== entry) {
             mkdirSync(path.dirname(desktopFilePath), { recursive: true });
@@ -336,12 +333,12 @@ function setupTray() {
 
     tray.on('click', () => {
         showMainWindow();
-        // the views kept the bounds they had when the window was hidden
+        // views kept bounds from when window was hidden
         adjustContentViews();
     });
 }
 
-// the app follows whichever language soundcloud.com is being shown in
+// app language follows soundcloud.com's page language
 async function getLanguage() {
     if (!contentView) return;
     const lang = await contentView.webContents.executeJavaScript(`document.documentElement.lang || 'en'`);
@@ -439,9 +436,8 @@ function isValidSettingValue(value: unknown, depth = 0): boolean {
     return entries.every(([key, entry]) => SETTING_KEY_PATTERN.test(key) && isValidSettingValue(entry, depth + 1));
 }
 
-// `setting-changed` writes straight into the config store, so keys are held to a plain identifier
-// shape: no dot-prop paths, no `__proto__`. `value` stays loosely typed because the handler reads
-// it differently per key.
+// `setting-changed` writes straight into config: keys must be plain identifiers (no dot-prop, no __proto__)
+// value loosely typed: handler reads it per key
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isValidSettingPayload(data: unknown): data is { key: string; value: any } {
     if (typeof data !== 'object' || data === null) return false;
@@ -476,7 +472,7 @@ function applyThemeChange(isDark: boolean): void {
     applyThemeToContent(isDarkTheme);
 }
 
-// a hidden or minimized window reports bounds the views can't be laid out against
+// hidden or minimized window reports bounds views can't lay out against
 function adjustContentViews() {
     if (!mainWindow || !contentView || !headerView) return;
     if (!mainWindow.isVisible() || mainWindow.isMinimized()) return;
@@ -535,7 +531,7 @@ function setupWindowControls() {
     mainWindow.on('maximize', onMaximizeChange(true));
     mainWindow.on('unmaximize', onMaximizeChange(false));
 
-    // fires continuously while an edge is dragged; one layout pass per tick is enough
+    // fires continuously during edge drag: one layout pass per tick is enough
     mainWindow.on('resize', scheduleContentViewAdjust);
 
     ipcMain.on('close-window', () => {
@@ -543,14 +539,12 @@ function setupWindowControls() {
         else mainWindow.close();
     });
 
-    // nav handlers (header buttons, and two-finger swipes forwarded by preload.ts)
+    // nav: header buttons, 2-finger swipes forwarded by preload.ts
     ipcMain.on('navigate-back', () => navigateHistory('back'));
     ipcMain.on('navigate-forward', () => navigateHistory('forward'));
 
-    // 3-finger swipe, or two-finger when macOS "Swipe between pages" is set to swipe instead of scroll.
-    // Chromium's own swipeWithEvent: maps left to Back, right to Forward.
-    // ponytail: ignores that trackpad setting, so a gesture that reaches both this and the wheel path in
-    // preload.ts would navigate twice. If that shows up, gate on AppleEnableSwipeNavigateWithScrolls.
+    // 3-finger swipe, or 2-finger with macOS "Swipe between pages" set to swipe
+    // chromium swipeWithEvent: left = Back, right = Forward
     mainWindow.on('swipe', (_event, direction) => {
         if (direction === 'left') navigateHistory('back');
         else if (direction === 'right') navigateHistory('forward');
@@ -586,7 +580,7 @@ function setupWindowControls() {
         trustedOn((_event, id: unknown, toIndex: unknown) => {
             const from = tabs.findIndex((tab) => tab.id === id);
             if (typeof toIndex !== 'number') return;
-            // in place: `tabs` is shared, and only the order changes
+            // in place: `tabs` shared, only order changes
             tabs.splice(0, tabs.length, ...moveItem(tabs, from, toIndex));
             sendTabState();
         }, 'tab-move'),
@@ -595,7 +589,7 @@ function setupWindowControls() {
         'navigate-url',
         trustedOn((_event, input: unknown) => navigateActiveTab(input), 'navigate-url'),
     );
-    // what SoundCloud's own search box would suggest, asked from the page in front
+    // SoundCloud's own search suggestions, asked from page in front
     ipcMain.handle(
         'search-suggest',
         trustedHandle(async (_event, query: unknown) => {
@@ -605,8 +599,8 @@ function setupWindowControls() {
             return readSuggestions(await page.mainFrame.executeJavaScript(suggestScript(query)).catch(() => null));
         }, 'search-suggest'),
     );
-    // The suggestions hang below the title bar, which is all the header view covers: while they are
-    // open it is stretched down over the page, on top of it.
+    // suggestions hang below title bar, only part header view covers
+    // while open, header view stretches down over page, on top of it
     ipcMain.on(
         'header-height',
         trustedOn((_event, height: unknown) => {
@@ -625,8 +619,8 @@ function setupWindowControls() {
 }
 
 let headerView: BrowserView | null;
-// the active tab's view. Everything that acts on "the page" (zoom, reload, back/forward, theme
-// toggles) goes through this, so it follows whichever tab is in front.
+// active tab's view; page actions (zoom, reload, back/forward, theme) go through this
+// so it follows whichever tab is in front
 let contentView: BrowserView;
 
 const HOME_URL = 'https://soundcloud.com/discover';
@@ -644,7 +638,7 @@ interface Tab {
 
 const tabs: Tab[] = [];
 let nextTabId = 1;
-// the tab whose player is driving presence, scrobbling and the thumbar
+// tab whose player drives presence, scrobbling and thumbar
 let audioTabId: number | undefined;
 
 function tabOfSender(event: IpcMainEvent): Tab | undefined {
@@ -662,7 +656,7 @@ function tabState() {
         activeId: tabs.find((tab) => tab.view === contentView)?.id,
         url,
         display: displayUrl(url),
-        // shown for SoundCloud's own pages, and when a cover fails to load
+        // shown on SoundCloud pages and when cover fails to load
         fallbackIcon: soundCloudIcon(),
     };
 }
@@ -676,8 +670,8 @@ function soundCloudIcon(): string {
     return soundCloudIconUrl;
 }
 
-// During shutdown the header's webContents is torn down before the tabs', which still emit load and
-// navigation events on their way out; touching it then throws and takes the quit down with it.
+// shutdown: header webContents torn down before tabs', which still emit load/nav events
+// touching header then throws and takes quit down with it
 function headerContents(): WebContents | null {
     const webContents = headerView?.webContents;
     return webContents && !webContents.isDestroyed() ? webContents : null;
@@ -697,7 +691,7 @@ function updateNavigationState(): void {
 }
 
 function createTab(): Tab {
-    // each extra account gets its own persistent session
+    // extra accounts: own persistent session
     const currentAccountId = store.get('currentAccountId', 'default');
     const sessionPartition = currentAccountId === 'default' ? undefined : `persist:sc_${currentAccountId}`;
 
@@ -706,7 +700,7 @@ function createTab(): Tab {
             ...(sessionPartition ? { partition: sessionPartition } : {}),
             nodeIntegration: false,
             contextIsolation: true,
-            // loads soundcloud.com plus third-party ad and embed iframes
+            // soundcloud.com plus third-party ad and embed iframes
             sandbox: true,
             webSecurity: true,
             allowRunningInsecureContent: false,
@@ -728,13 +722,13 @@ function createTab(): Tab {
     return tab;
 }
 
-// Only the active tab's view is attached to the window; the others keep running detached.
+// only active tab view attached to window; others run detached
 function activateTab(tab: Tab): void {
     if (contentView && contentView !== tab.view) mainWindow.removeBrowserView(contentView);
     contentView = tab.view;
     mainWindow.addBrowserView(tab.view);
 
-    // a view added later stacks above the settings panel, toasts and dialogs; put those back on top
+    // later-added view stacks over settings, toasts, dialogs: re-raise those
     for (const view of mainWindow.getBrowserViews()) {
         if (view !== tab.view && view !== headerView) mainWindow.setTopBrowserView(view);
     }
@@ -743,8 +737,6 @@ function activateTab(tab: Tab): void {
     tab.view.setBounds({ x: 0, y: HEADER_HEIGHT, width, height: height - HEADER_HEIGHT });
     tab.view.setAutoResize({ width: true, height: true });
 
-    // ponytail: enabling or disabling a plugin only reaches the active tab; other tabs pick it
-    // up on their next load. Loop over `tabs` in PluginService if that is not enough.
     pluginService?.setContentView(tab.view);
     tab.view.webContents.focus();
 
@@ -756,7 +748,7 @@ function activateTab(tab: Tab): void {
 async function startTab(tab: Tab, url: string): Promise<void> {
     const { webContents } = tab.view;
 
-    // before the first soundcloud request, so it never sees the Chromium-only brand
+    // before first soundcloud request: never sees Chromium-only brand
     const header = headerContents();
     if (header) {
         await presentAsChrome(webContents, header, app.userAgentFallback).catch((error) =>
@@ -766,9 +758,9 @@ async function startTab(tab: Tab, url: string): Promise<void> {
             console.error('Failed to set up short link expansion:', error),
         );
     }
-    if (!tabs.includes(tab) || isQuitting) return; // closed while it was being set up
+    if (!tabs.includes(tab) || isQuitting) return; // closed during setup
 
-    // wired after presentAsChrome so its about:blank load does not run the page handlers
+    // after presentAsChrome: its about:blank load must not run page handlers
     wireTab(tab);
     webContents.loadURL(url);
 }
@@ -784,7 +776,7 @@ function closeTab(id: unknown): void {
     const index = tabs.findIndex((tab) => tab.id === id);
     if (index === -1) return;
 
-    // the last tab is the window: closing it closes (or, on macOS and with tray, hides) the window
+    // last tab is window: closing it closes, or hides on macOS/tray
     if (tabs.length === 1) {
         mainWindow.close();
         return;
@@ -816,7 +808,7 @@ function navigateActiveTab(input: unknown): void {
     const { webContents } = contentView;
     const target = new URL(url);
     if (contentViewIsOnSoundCloud() && target.origin === new URL(webContents.getURL()).origin) {
-        // hand the path to SoundCloud's own router: a real load would stop whatever is playing
+        // hand path to SoundCloud's router: real load would stop playback
         const path = JSON.stringify(target.pathname + target.search + target.hash);
         webContents
             .executeJavaScript(`history.pushState(null, '', ${path}); dispatchEvent(new PopStateEvent('popstate'));`)
@@ -827,7 +819,7 @@ function navigateActiveTab(input: unknown): void {
     webContents.focus();
 }
 
-// Per-tab page lifecycle: header state for the active tab, crash recovery, theme and monitor injection.
+// per-tab page lifecycle: header state, crash recovery, theme and monitor injection
 function wireTab(tab: Tab): void {
     const { webContents } = tab.view;
     const isActive = () => tab.view === contentView;
@@ -871,17 +863,17 @@ function wireTab(tab: Tab): void {
         webContents.reloadIgnoringCache();
     });
 
-    // theme and promo/upsell hiding go in on dom-ready, not did-finish-load: the load event waits
-    // on every subresource and never fires when a load is interrupted, which left upsells visible
+    // theme and promo hiding on dom-ready, not did-finish-load: load waits on every subresource
+    // and never fires when interrupted, leaving upsells visible
     webContents.on('dom-ready', () => applyThemeToContent(isDarkTheme, tab.view));
 
     let isInitialLoad = true;
     webContents.on('did-finish-load', async () => {
-        // one clean load clears the budget, so unrelated crashes later still get retries
+        // clean load resets crash budget: later unrelated crashes still retry
         rendererCrashes = 0;
 
         if (isInitialLoad) {
-            // drop the about:blank entry presentAsChrome left behind, or Back would land on it
+            // drop about:blank entry presentAsChrome left, or Back lands on it
             webContents.navigationHistory.clear();
             isInitialLoad = false;
         }
@@ -897,7 +889,7 @@ function wireTab(tab: Tab): void {
             void refreshCurrentAccountName();
         }
 
-        // a load wipes everything injected into the page
+        // load wipes everything injected into page
         try {
             if (!isSoundCloudUrl(webContents.getURL())) return;
 
@@ -911,12 +903,11 @@ function wireTab(tab: Tab): void {
 }
 
 async function init() {
-    // serves the settings, notification and confirm documents; must be in place before
-    // any of those views loads
+    // serves settings, notification, confirm docs: must be in place before those views load
     handleAppScheme();
 
-    // castlabs requires the Widevine CDM to be ready before any window that plays protected
-    // media exists. Deferring this breaks Go+ playback, so it stays despite delaying first paint.
+    // castlabs: Widevine CDM must be ready before any protected-media window exists
+    // deferring breaks Go+ playback: keep despite slower first paint
     try {
         await components.whenReady();
         console.log('Components ready:', components.status());
@@ -924,7 +915,7 @@ async function init() {
         console.error('Failed to initialize components:', error);
     }
 
-    // safeStorage is not available before app ready
+    // safeStorage: unavailable before app ready
     migrateSecrets(store);
 
     setupUpdater();
@@ -941,7 +932,7 @@ async function init() {
 
     windowState.manage(mainWindow);
 
-    // macOS keeps the app alive with its window hidden; elsewhere that needs the tray
+    // macOS: app lives with window hidden; elsewhere needs tray
     mainWindow.on('close', (event) => {
         if (isQuitting) return;
 
@@ -973,13 +964,13 @@ async function init() {
     mainWindow.addBrowserView(headerView);
     headerView.setBounds({ x: 0, y: 0, width: mainWindow.getBounds().width, height: HEADER_HEIGHT });
     headerView.setAutoResize({ width: true, height: false });
-    // see-through below the title bar, for when it reaches over the page (see 'header-height')
+    // transparent below title bar: header-height can reach over page
     headerView.setBackgroundColor('#00000000');
     applyNavigationPolicy(headerView.webContents);
     markTrustedSender(headerView.webContents);
     headerView.webContents.loadFile(path.join(__dirname, 'header', 'header.html'));
 
-    // tabs attach their own shortcut listeners, so this service has to exist before the first one
+    // tabs attach shortcut listeners: service must exist before first tab
     shortcutService = new ShortcutService(mainWindow);
     shortcutService.attachToWebContents(headerView.webContents);
 
@@ -991,14 +982,14 @@ async function init() {
     themeService = new ThemeService(store);
     pluginService = new PluginService(store);
     pluginService.setContentView(contentView);
-    // fires when a theme file changes on disk
+    // theme file changed on disk
     themeService.onCustomThemeUpdated(() => applyThemeToContent(isDarkTheme));
     notificationManager = new NotificationManager(mainWindow);
     settingsManager = new SettingsManager(mainWindow, store, translationService);
     downloadManager = new DownloadManager(mainWindow, store, (active, items) => {
         if (isQuitting) return;
         headerContents()?.send('downloads-active', active);
-        // the list at the top of the settings panel
+        // downloads list atop settings panel
         const settings = settingsManager.getView()?.webContents;
         if (settings && !settings.isDestroyed()) settings.send('downloads-changed', items);
     });
@@ -1087,7 +1078,7 @@ async function init() {
     setupTranslationHandlers();
     setupAudioHandler();
 
-    // for the rich presence preview in settings
+    // rich presence preview in settings
     ipcMain.handle('get-current-track', () => lastTrackInfo);
 
     await proxyService.apply();
@@ -1105,16 +1096,16 @@ async function init() {
         sendTabState();
     });
 
-    // sent by the download button preload.ts adds under each track, album and playlist
+    // from download button preload.ts adds under tracks, albums, playlists
     ipcMain.on('soundcloud:download', async (event, rawUrl: unknown) => {
         if (!isTrustedSoundCloudSender(event) || typeof rawUrl !== 'string' || !isSoundCloudUrl(rawUrl)) return;
 
         const url = new URL(rawUrl);
-        // "?in=<playlist>" only records where the track was opened from
+        // "?in=<playlist>" only records where track was opened from
         url.searchParams.delete('in');
 
-        // Downloading as the logged-in account is what gets Go+ streams and original files. The token
-        // is the one soundcloud.com itself keeps in this session; signed out, there is none.
+        // logged-in download gets Go+ streams and originals: oauth_token from session
+        // signed out: no token
         const [cookie] = store.get('downloadUseAccount', true)
             ? await event.sender.session.cookies
                   .get({ url: 'https://soundcloud.com', name: 'oauth_token' })
@@ -1124,7 +1115,7 @@ async function init() {
     });
 
     ipcMain.on('setting-changed', async (event, data) => {
-        // settings include the yt-dlp and deemix paths, which get executed: only the app's own views may write them
+        // settings hold yt-dlp/deemix paths that get executed: only own views may write
         if (!isTrustedSender(event)) return;
 
         if (!isValidSettingPayload(data)) {
@@ -1134,7 +1125,7 @@ async function init() {
 
         const key = proxyService.transformKey(data.key);
 
-        // credentials are held as ciphertext rather than written straight to the config
+        // credentials stored as ciphertext, not plain in config
         if (isSecretKey(key)) {
             writeSecret(store, key, data.value);
         } else {
@@ -1220,7 +1211,7 @@ async function init() {
 
             await contentView?.webContents.session.clearStorageData();
 
-            // an extra account is removed outright; the main one just ends up signed out
+            // extra account: removed; main account: just signed out
             if (currentId !== 'default') {
                 const accounts: Account[] = store.get('accounts', [{ id: 'default', name: 'Main Account' }]);
 
@@ -1302,7 +1293,7 @@ async function refreshCurrentAccountName(): Promise<void> {
             settingsManager?.getView()?.webContents.send('accounts-updated');
         }
     } catch {
-        // page was navigating; the next navigation event will retry
+        // page navigating: next navigation retries
     }
 }
 
@@ -1358,13 +1349,12 @@ function setupThemeHandlers() {
     applyThemeToContent(isDarkTheme);
 }
 
-// per webContents rather than per target: every tab is a 'content' view with its own stylesheet key
+// per webContents, not target: each tab is 'content' view with own stylesheet key
 const insertedThemeCssKeys = new WeakMap<WebContents, string>();
 const themeCssQueues = new WeakMap<WebContents, Promise<void>>();
 
-// One at a time per view. Picking a theme applies it several times over in quick succession, and two
-// runs that overlap both insert a stylesheet while only one key is kept: the other then outlives
-// every later change of theme, until the page is reloaded.
+// runs per view must not overlap: they insert two stylesheets but keep one key
+// other outlives later theme changes until reload
 function applyCustomThemeCss(
     target: 'content' | 'header' | 'settings',
     webContents: WebContents | null | undefined,
@@ -1392,7 +1382,7 @@ async function replaceCustomThemeCss(
         try {
             await webContents.removeInsertedCSS(previousKey);
         } catch {
-            // the view navigated since insertion; the old stylesheet went with it
+            // view navigated since insert: old stylesheet already gone
         }
     }
 
@@ -1436,13 +1426,12 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
             const body = block.replace(/^[\s\S]*?\*\//, '').trim();
             res[target] += (res[target] ? '\n' : '') + body;
         }
-        // a theme without markers is all for the content view
+        // no markers: whole theme is content view
         if (!any) res.content = css;
         return res;
     })(customThemeCSS);
 
-    // macOS draws its own overlay scrollbars, which hide when idle; any ::-webkit-scrollbar rule
-    // replaces them with a permanent strip, so the custom ones are for Windows and Linux only
+    // macOS overlay scrollbars hide when idle; ::-webkit-scrollbar rules make them permanent: win/linux only
     const scrollbarCss = isMac
         ? ''
         : `
@@ -1502,16 +1491,15 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                     
                     ${hidePromotions ? '.banner.m-promotion, .sidebarModule.mobileApps { display: none !important; }' : ''}
 
-                    /* footer: keep only the language selector. the separators between the links are
-                       bare text nodes, so they are collapsed with font-size rather than display */
+                    /* footer: keep language selector; separators are bare text nodes, collapse via font-size */
                     ${hidePromotions ? '.l-footer { font-size: 0 !important; line-height: 0 !important; } .l-footer > a { display: none !important; } .l-footer .footer__localeSelector { font-size: 14px !important; line-height: 20px !important; margin-top: 0 !important; }' : ''}
                     
                     ${hideEventsNearYou ? '.velvetCakeModule { display: none !important; }' : ''}
 
-                    /* search lives in the title bar (header.html) */
+                    /* search lives in title bar (header.html) */
                     .header__search { display: none !important; }
 
-                    /* the "..." menu, less its company links; the first list is nothing but those */
+                    /* "..." menu minus company links; first list is only those */
                     .moreMenu .headerMenu__list:has(a[href$="/company/home"]), .moreMenu li:has(> a:is([href="/download"], [href$="/company/newsroom"], [href$="/jobs"], [href*="developers.soundcloud.com"], [href*="store.soundcloud.com"])) { display: none !important; }
                     
 					${hideArtistUpsells ? '.header__upsellWrapper, .creatorSubscriptionsButton.header__creatorUpsell, .artistConnectItem.m-upsellNextPro, .dropdownMenu [href*="checkout.soundcloud.com"], .dropdownMenu *:has(> svg.profileMenu__icon path[fill="#F50"]), .spotlight:has(.spotlight__upsellBanner), .spotlight__upsellBanner, .spotlight__upsellCTA, .sidebarContent:has(.velvetCakeIframe), .artistConnectContainer .tileGallery__sliderPeekForward, .artistConnectContainer .tileGallery__sliderPeekBackward, .MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }' : ''}
@@ -1523,7 +1511,7 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                 }
                 document.head.appendChild(style);
 
-                // upsells inside same-origin iframes are out of reach of the stylesheet above
+                // same-origin iframe upsells: out of stylesheet reach
                 if (window._artistUpsellInterval) {
                     clearInterval(window._artistUpsellInterval);
                     window._artistUpsellInterval = null;
@@ -1535,7 +1523,7 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                             const container = iframe.closest('.webiEmbeddedModuleContainer');
                             
                             if (container && doc) {
-                                // the fan-support waitlist card
+                                // fan-support waitlist card
                                 if (!doc.getElementById('custom-iframe-style')) {
                                     const iframeStyle = doc.createElement('style');
                                     iframeStyle.id = 'custom-iframe-style';
@@ -1543,19 +1531,18 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                                     doc.head.appendChild(iframeStyle);
                                 }
 
-                                // a module that is nothing but a paywall goes entirely
+                                // paywall-only module: hide whole container
                                 const paywalled = doc.querySelector('svg[aria-label="Paywalled feature"]');
                                 container.style.display = paywalled ? 'none' : '';
                             }
                         } catch(e) {
-                            // iframe not loaded yet; the next pass retries
+                            // iframe not loaded yet: next pass retries
                         }
                     });
                 }, 1000);
 
-                // Opt out of every optional OneTrust cookie category (targeting, functional,
-                // performance), which default to on. OneTrust loads late, hence the wait, and
-                // remembers the choice in its own cookie, so later loads find nothing to reject.
+                // reject optional OneTrust categories (targeting, functional, performance): default on
+                // OneTrust loads late, so wait; remembers choice in own cookie
                 if (!window._cookieRejectInterval) {
                     let tries = 0;
                     window._cookieRejectInterval = setInterval(() => {
@@ -1574,11 +1561,11 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
 
     const targets = (only ? [only] : tabs.map((tab) => tab.view)).filter((view) => !view.webContents.isDestroyed());
     for (const view of targets) {
-        // mainFrame, not webContents: webContents.executeJavaScript queues until did-stop-loading
+        // mainFrame, not webContents: latter queues until did-stop-loading
         view.webContents.mainFrame.executeJavaScript(themeScript).catch(console.error);
     }
 
-    // apply each view's custom theme sections as stylesheets, never as script source
+    // custom theme sections go in as stylesheets, never script source
     const joinSection = (section: string) => sections.all + (sections.all && section ? '\n' : '') + section || '';
 
     for (const view of targets) {
@@ -1644,7 +1631,7 @@ app.on('window-all-closed', () => {
     if (!isMac) app.quit();
 });
 
-// Dock icon clicked. On macOS the window is only ever hidden, never destroyed mid-session.
+// dock icon clicked; macOS window is only hidden, never destroyed mid-session
 app.on('activate', showMainWindow);
 
 app.on('before-quit', () => {
@@ -1674,7 +1661,7 @@ export function queueToastNotification(message: string) {
 }
 
 function setupTranslationHandlers() {
-    // the settings panel looks its strings up by the keys in its data-i18n attributes
+    // settings panel looks up strings by data-i18n keys
     ipcMain.handle('get-translations', () => translationService.all());
 }
 
@@ -1693,7 +1680,7 @@ function setupAudioHandler() {
 
         const { data: result, reason } = update;
 
-        // every tab runs the monitor; a paused tab must not overwrite what another one is playing
+        // every tab runs monitor: paused tab must not overwrite playing one
         const senderTab = tabOfSender(event);
         if (result.isPlaying) audioTabId = senderTab?.id;
         else if (audioTabId !== undefined && audioTabId !== senderTab?.id) return;

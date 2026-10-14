@@ -26,15 +26,8 @@ module.exports = {
         console.log(`Theme changed to ${isDark ? 'dark' : 'light'}`);
     },
 
-    /**
-     * Return a string of JavaScript that will be injected into the SoundCloud page.
-     * This runs in the actual page context with full DOM access, just like a userscript.
-     * The code is re-injected on every page load/navigation.
-     *
-     * To support cleanup when the plugin is disabled, assign a function to:
-     *   window.__scrpc_cleanup_<plugin_id>
-     * where <plugin_id> matches the filename without .js (e.g. "example-plugin").
-     */
+    /** JS string injected into SoundCloud page on each load/navigation, full DOM access
+     *  cleanup: assign window.__scrpc_cleanup_<plugin_id>, id = filename without .js */
     contentScript() {
         return `
             (function() {
@@ -43,13 +36,13 @@ module.exports = {
 
                 console.log('[example-plugin] Content script running on SoundCloud page');
 
-                // watch for SPA navigation changes
+                // watch SPA navigation
                 var observer = new MutationObserver(function() {
-                    // react to DOM changes here
+                    // DOM changes go here
                 });
                 observer.observe(document.body, { childList: true, subtree: true });
 
-                // cleanup handler, called when plugin is disabled
+                // cleanup on plugin disable
                 window.__scrpc_cleanup_example_plugin = function() {
                     observer.disconnect();
                     delete window.__examplePluginLoaded;

@@ -72,7 +72,7 @@ export class PresenceService {
                     const isNegative = time.trim().startsWith('-');
                     const raw = isNegative ? time.trim().slice(1) : time.trim();
                     const parts = raw.split(':').map((p) => Number(p));
-                    // Support H:MM:SS or MM:SS
+                    // H:MM:SS or MM:SS
                     let seconds = 0;
                     for (const part of parts) {
                         seconds = seconds * 60 + (isNaN(part) ? 0 : part);
@@ -85,7 +85,7 @@ export class PresenceService {
                 const parsedTotal = parseTimeToMs(totalTime);
                 const totalMilliseconds =
                     parsedTotal < 0
-                        ? elapsedMilliseconds + Math.abs(parsedTotal) // total time = elapsed + remaining
+                        ? elapsedMilliseconds + Math.abs(parsedTotal) // total: elapsed + remaining
                         : parsedTotal;
 
                 if (totalMilliseconds <= 0) return;

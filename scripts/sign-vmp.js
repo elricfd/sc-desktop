@@ -4,14 +4,8 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-/**
- * Runs the castlabs EVS module under the first interpreter that can import it.
- *
- * "Exists" is not enough: PATH's python3 is often Homebrew's, while `pip3 install --user
- * castlabs-evs` may have gone into Apple's /usr/bin/python3. Stopping at the first
- * interpreter that exists got ModuleNotFoundError, and the build shipped with castlabs'
- * development VMP signature, which breaks every DRM track. Set EVS_PYTHON to force one.
- */
+/** run castlabs EVS under first python that imports it, EVS_PYTHON forces one.
+ *  wrong one shipped dev VMP sig, breaks every DRM track */
 function runEvs(args) {
     const candidates = process.env.EVS_PYTHON ? [process.env.EVS_PYTHON] : ['python3', 'python', '/usr/bin/python3'];
     const interpreter = candidates.find(
@@ -67,8 +61,7 @@ function signPackage(appOutDir) {
         console.log(`EVS signing output (${subprocess.interpreter}):`, subprocess.stdout);
         console.log('VMP signing completed successfully');
     } catch (error) {
-        // every failure lands here: no module, bad or missing EVS credentials, an expired
-        // account, network errors
+        // any failure: missing module, bad/missing creds, expired account, network
         console.warn('\n' + '='.repeat(72));
         console.warn('WARNING: VMP signing did not complete. The build is NOT signed.');
         console.warn('');
@@ -98,17 +91,10 @@ function signPackage(appOutDir) {
     }
 }
 
-// electron-builder hooks. package.json points both afterPack and afterSign at this file and
-// electron-builder calls the export named after the hook, with a context holding
-// appOutDir and electronPlatformName.
-//
-// castlabs EVS requires VMP signing BEFORE code signing on macOS and AFTER it on Windows.
-// On macOS EVS rewrites Electron Framework.sig inside the bundle, a sealed resource, so
-// doing it in afterSign would invalidate the Apple signature (and the notarization).
-// afterPack also runs before electron-builder flips fuses: if `electronFuses` is ever
-// configured, the mac VMP signing has to move after that step.
+// hooks: mac VMP must precede codesign (sealed bundle, breaks Apple sig), win must follow
+// afterPack runs before fuses: move mac VMP after electronFuses if ever configured
 module.exports.afterPack = function (context) {
-    // Linux needs no VMP signature: Widevine works without one there
+    // linux: Widevine needs no VMP sig
     if (context.electronPlatformName === 'darwin') {
         signPackage(context.appOutDir);
     }
@@ -120,7 +106,7 @@ module.exports.afterSign = function (context) {
     }
 };
 
-// manual signing: node scripts/sign-vmp.js <path-to-packaged-app>
+// manual: node scripts/sign-vmp.js <packaged-app>
 if (require.main === module) {
     const appOutDir = process.argv[2];
     if (!appOutDir) {

@@ -1,17 +1,13 @@
 import type { IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
 
-/**
- * ipcMain is one bus shared by every renderer, including the tabs showing soundcloud.com and
- * its ad frames. Privileged handlers (opening paths, enabling plugins, writing settings,
- * switching accounts) only act on messages from views the app built itself, which register
- * here as they are created. Tabs never do.
- */
+/** ipcMain is one bus for all renderers, incl. soundcloud.com tabs and ad frames: privileged handlers
+ * only accept views built by app itself (markTrustedSender), never tabs */
 const trustedSenderIds = new Set<number>();
 
 export function markTrustedSender(webContents: WebContents): void {
     trustedSenderIds.add(webContents.id);
 
-    // ids are recycled, so a stale entry would silently grant trust to a later view
+    // ids recycled: stale entry would silently grant trust to later view
     webContents.once('destroyed', () => {
         trustedSenderIds.delete(webContents.id);
     });
@@ -21,7 +17,7 @@ export function isTrustedSender(event: IpcMainEvent | IpcMainInvokeEvent): boole
     return trustedSenderIds.has(event.sender.id);
 }
 
-/** Wrap an `ipcMain.on` listener so it drops messages from untrusted renderers. */
+/** wrap `ipcMain.on` listener: drop messages from untrusted renderers */
 export function trustedOn<T extends unknown[]>(
     handler: (event: IpcMainEvent, ...args: T) => void,
     channel = 'ipc',
@@ -35,7 +31,7 @@ export function trustedOn<T extends unknown[]>(
     };
 }
 
-/** Wrap an `ipcMain.handle` handler so untrusted renderers get a rejection, not a result. */
+/** wrap `ipcMain.handle` handler: untrusted renderers get rejection, not result */
 export function trustedHandle<T extends unknown[], R>(
     handler: (event: IpcMainInvokeEvent, ...args: T) => R,
     channel = 'ipc',

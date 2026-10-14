@@ -50,7 +50,7 @@ function shouldSendWebhook(state: WebhookState, triggerPercentage: number): bool
     return !state.webhookSent && playedTime >= targetTime;
 }
 
-/** Upper bound on a webhook delivery attempt. */
+/** upper bound on webhook delivery attempt */
 const WEBHOOK_TIMEOUT_MS = 10_000;
 
 export class WebhookService {
@@ -125,7 +125,7 @@ export class WebhookService {
                     timestamp: new Date().toISOString(),
                     ...trackData,
                 }),
-                // the endpoint is user-supplied and may never answer
+                // user-supplied endpoint may never answer
                 signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
             });
 
@@ -175,7 +175,7 @@ export class WebhookService {
             }
         }
 
-        // Check for loop (elapsed time <= 3 seconds on same track)
+        // loop: elapsed <= 3s on same track
         const elapsedSeconds = timeStringToSeconds(trackInfo.elapsed);
         const isLoop =
             this.currentWebhookState &&

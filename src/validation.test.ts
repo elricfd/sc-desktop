@@ -61,9 +61,8 @@ describe('cleanTrackString', () => {
     });
 
     it('blocks XSS payloads containing angle brackets via control char stripping', () => {
-        // Note: < > are printable (codes 60, 62) so they pass cleanTrackString
-        // but get neutralized by textContent in the settings view.
-        // cleanTrackString focuses on control characters only.
+        // < > pass cleanTrackString (printable), textContent in settings neutralizes them
+        // cleanTrackString only handles control characters
         const payload = '<script>alert(1)</script>';
         const result = cleanTrackString(payload, 100);
         expect(result).toBe('<script>alert(1)</script>');
@@ -119,14 +118,14 @@ describe('cleanTrackUrl', () => {
     });
 
     it('strips control characters before URL parsing', () => {
-        // cleanTrackString removes \x00 first, so the URL becomes valid
+        // cleanTrackString drops \x00 first, so URL is valid
         expect(cleanTrackUrl('https://soundcloud.com/\x00track')).toBe('https://soundcloud.com/track');
     });
 
     it('truncates long URLs before validation', () => {
         const longUrl = 'https://example.com/' + 'a'.repeat(3000);
         const result = cleanTrackUrl(longUrl);
-        // Truncated to 2048 chars, then validated as HTTPS URL
+        // truncated to 2048 chars, then HTTPS-validated
         expect(result.startsWith('https://example.com/')).toBe(true);
         expect(result.length).toBeLessThanOrEqual(2048);
     });
@@ -254,8 +253,8 @@ describe('validateTrackInfo', () => {
         };
 
         const result = validateTrackInfo(input);
-        // The string passes cleanTrackString (<> are printable), but is limited to 300 chars
-        // Defense is at the rendering layer (textContent), not here
+        // passes cleanTrackString (<> printable), capped at 300 chars
+        // defense is at render layer (textContent), not here
         expect(result!.title).toBe('</div><img src=x onerror="alert(1)"><div>');
         expect(result!.title.length).toBeLessThanOrEqual(300);
     });

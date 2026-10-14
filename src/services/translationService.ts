@@ -27,7 +27,7 @@ export class TranslationService {
         return this.currentLang;
     }
 
-    /** Every string in the current language, with English filling any gaps. */
+    /** all strings in current language, English fills gaps */
     all(): Record<string, string> {
         return { ...en, ...translations[this.currentLang] };
     }

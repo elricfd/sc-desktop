@@ -7,10 +7,10 @@
  * @homepage https://gist.github.com/iamnotbobby/604828ac84d9d1ec54eabb8d99d56c7b
  */
 
-// View the homepage for important information and known issues!
+// see homepage for known issues
 
-const MAX_LIMIT = 250; // Maximum tracks to request per API call
-const BATCH_SIZE = 50; // Number of tracks to load per batch
+const MAX_LIMIT = 250; // tracks per API call
+const BATCH_SIZE = 50; // tracks per batch
 
 module.exports = {
     onEnable() {
@@ -33,7 +33,7 @@ module.exports = {
     function findWebpackRequire() {
         if (typeof window.webpackJsonp !== 'undefined') {
             let requireFunc = null;
-            // Do not remove module or exports even if unused, will break!
+            // keep module/exports even if unused, removing breaks
             window.webpackJsonp.push([[], {'_': function(module, exports, __webpack_require__) { requireFunc = __webpack_require__; }}, [['_']]]);
             return requireFunc;
         }
@@ -42,7 +42,7 @@ module.exports = {
                 const chunk = window[key];
                 if (Array.isArray(chunk)) {
                     let requireFunc = null;
-                    // Do not remove module or exports even if unused, will break!
+                    // keep module/exports even if unused, removing breaks
                     chunk.push([['_'], {'_': function(module, exports, __webpack_require__) { requireFunc = __webpack_require__; }}, [['_']]]);
                     if (requireFunc) return requireFunc;
                 }
