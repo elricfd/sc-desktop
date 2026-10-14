@@ -1,6 +1,5 @@
-// Homepage-confirm dialog behaviour. A separate file because the page is served under a CSP
-// that refuses inline script -- see src/utils/appProtocol.ts. The request id arrives as a data
-// attribute, so no caller-supplied value is ever parsed as code.
+// homepage-confirm script: separate file, page CSP refuses inline script; see appProtocol.ts
+// request id via data attribute, never parsed as code
 
 (function () {
     const dialog = document.querySelector('.dialog');

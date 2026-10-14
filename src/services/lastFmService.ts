@@ -6,10 +6,10 @@ import { normalizeTrackInfo } from '../utils/trackParser';
 import { readSecret, writeSecret } from '../utils/secretStore';
 import type { LastFmTrackData } from '../types';
 
-/** Upper bound on any Last.fm request; the API is not on the critical path. */
+/** upper bound on any Last.fm request; API not on critical path */
 const REQUEST_TIMEOUT_MS = 10_000;
 
-/** How long to wait for the user to approve authorisation before giving up. */
+/** how long to wait for user to approve auth before giving up */
 const AUTH_TIMEOUT_MS = 5 * 60_000;
 
 const authUrl = (apiKey: string) =>
@@ -68,12 +68,12 @@ export class LastFmService {
         this.store = store;
     }
 
-    // the active tab; tabs come and go, so this is looked up on each use
+    // active tab: tabs come and go, so look up on each use
     private get window(): BrowserView {
         return this.getView();
     }
 
-    /* API dispatcher eliminates duplicate fetch headers &&& signing logic */
+    /* API dispatcher: no duplicate fetch headers or signing logic */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private async sendLastFmRequest(method: string, params: Record<string, string>): Promise<any> {
         const sessionKey = readSecret(this.store, 'lastFmSessionKey', '');
@@ -96,8 +96,7 @@ export class LastFmService {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ ...payload, api_sig: apiSig, format: 'json' }),
-                // without a deadline a hung connection leaves the scrobble promise
-                // pending for as long as the OS keeps the socket open
+                // no deadline: hung connection keeps scrobble pending while OS holds socket
                 signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             });
             return await response.json();
@@ -136,13 +135,11 @@ export class LastFmService {
         this.isAuthenticating = true; // lock auth process
 
         const webContents = this.window.webContents;
-        // held in an object so `finish` can clear it without referencing a binding
-        // declared later
+        // object so finish can clear it without ref to later-declared binding
         const timers: { approval?: ReturnType<typeof setTimeout> } = {};
         let settled = false;
 
-        // every exit path runs through here, or a failed or abandoned attempt would hold the
-        // lock for the rest of the session
+        // every exit runs through here; else failed or abandoned attempt holds lock for session
         const finish = () => {
             if (settled) return;
             settled = true;
@@ -161,9 +158,7 @@ export class LastFmService {
                 return;
             }
 
-            // the flow passes through login and consent pages first; only the callback
-            // carries a token, so intermediate redirects are ignored rather than
-            // consuming the listener
+            // only callback carries token; ignore login/consent redirects without consuming listener
             if (!token) return;
 
             finish();
@@ -177,11 +172,11 @@ export class LastFmService {
             webContents.loadURL('https://soundcloud.com/discover');
         };
 
-        // attached before the navigation starts, so a redirect during the load is not missed
+        // attach before navigation starts so no redirect during load is missed
         webContents.on('will-redirect', onRedirect);
         webContents.once('destroyed', finish);
 
-        // the user may simply never approve
+        // user may never approve
         timers.approval = setTimeout(finish, AUTH_TIMEOUT_MS);
 
         try {

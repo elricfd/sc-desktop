@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { installStoreReadCache } from './utils/storeCache';
 
-/** Minimal stand-in for electron-store that counts how often the file is read. */
+/** fake electron-store, counts file reads */
 function makeFakeStore(initial: Record<string, unknown> = {}) {
     const data: Record<string, unknown> = { ...initial };
     let reads = 0;

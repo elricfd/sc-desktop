@@ -8,7 +8,7 @@ jobs:
         env:
             EVS_USERNAME: ${{ secrets.EVS_USERNAME }}
             EVS_PASSWORD: ${{ secrets.EVS_PASSWORD }}
-            # forks don't have the evs secrets, build unsigned there instead of dying
+            # forks lack evs secrets: build unsigned instead of failing
             STRICT_VMP_SIGNING: ${{ secrets.EVS_USERNAME != '' }}
 
         strategy:
@@ -43,7 +43,7 @@ jobs:
               if: matrix.os != 'ubuntu-latest' && env.EVS_USERNAME != ''
               run: python scripts/evs-auth.py
 
-            # the lockfile records the git-hosted dependencies with SSH URLs, and runners have no key
+            # lockfile has SSH git URLs, runners have no key
             - name: Fetch git dependencies over HTTPS
               shell: bash
               run: git config --global url."https://github.com/".insteadOf "git@github.com:"

@@ -1,18 +1,8 @@
 import { app, type WebContents } from 'electron';
 import { chromeBrandList } from './userAgent';
 
-/**
- * Electron reports its client hints as bare "Chromium" while the UA we send says Chrome, a mismatch
- * bot detection can see. Add the "Google Chrome" brand the way a real Chrome build lists it, in both
- * the Sec-CH-UA headers and navigator.userAgentData. Electron has no API for this; the devtools
- * protocol is the only route that keeps headers and JS consistent.
- *
- * `secureView` is any loaded view on a secure context (the header). It supplies the genuine platform
- * and architecture hints, so none of them are invented here.
- *
- * Leaves `content` on about:blank: the override needs a live frame and has to be in place before the
- * first real request.
- */
+/** Electron's bare "Chromium" brand vs Chrome UA: bot-detection mismatch, add "Google Chrome" brand
+ * via devtools, only route keeping Sec-CH-UA and navigator.userAgentData consistent */
 export async function presentAsChrome(content: WebContents, secureView: WebContents, userAgent: string): Promise<void> {
     const real = await secureView.executeJavaScript(
         `navigator.userAgentData.getHighEntropyValues(['architecture', 'bitness', 'formFactors', 'model', 'platformVersion', 'uaFullVersion', 'wow64'])`,
@@ -40,10 +30,8 @@ export async function presentAsChrome(content: WebContents, secureView: WebConte
     dbg.attach('1.3');
     await dbg.sendCommand('Emulation.setUserAgentOverride', override);
 
-    // Cross-site iframes, workers and the page's service worker are separate targets that do not
-    // inherit the override. They start paused so it lands before their first request; not every
-    // target type has every domain, and a target can be gone by the time we answer, so each step
-    // is best-effort.
+    // cross-site iframes, workers, service worker: separate targets, start paused so override lands first
+    // best-effort: not every target has every domain, and targets can vanish mid-setup
     const quiet = (method: string, params: object, sessionId: string) =>
         dbg.sendCommand(method, params, sessionId).catch(() => {});
     const start = async (sessionId: string) => {
@@ -53,15 +41,13 @@ export async function presentAsChrome(content: WebContents, secureView: WebConte
     };
     dbg.on('message', (_event, method, params, sessionId) => {
         if (method === 'Target.attachedToTarget') void start(params.sessionId);
-        // A service worker that stops and starts again keeps its session: no attachedToTarget, only
-        // this, and it is paused again. Until it is told to run, every request of every tab it
-        // controls waits on it, reloads included.
+        // restarted service worker keeps session: no attachedToTarget, only this, and it stays paused
+        // until told to run, blocking every request of its tabs, reloads included
         else if (method === 'Inspector.targetReloadedAfterCrash' && sessionId) void start(sessionId);
     });
     await dbg.sendCommand('Target.setAutoAttach', autoAttach);
 
-    // A debugger still attached at shutdown crashes Electron while it disposes the V8 isolate
-    // (SIGTRAP, with a crash report on every quit), so let go of it first.
+    // debugger attached at shutdown crashes Electron on V8 dispose (SIGTRAP): detach first
     const detach = () => {
         if (!content.isDestroyed() && dbg.isAttached()) dbg.detach();
     };

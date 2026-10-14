@@ -1,6 +1,5 @@
-// Electron's real UA with the app-name and Electron/<ver> tokens removed, and the Chrome version
-// reduced to MAJOR.0.0.0 the way Chrome itself sends it. Platform and major version stay genuine,
-// so client hints agree with the UA.
+// Electron's UA minus app-name and Electron/<ver> tokens; Chrome version cut to MAJOR.0.0.0 as Chrome sends it.
+// platform and major stay genuine so client hints agree with UA
 export function deriveBrowserUserAgent(electronUserAgent: string, appName: string): string {
     const escaped = appName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -17,9 +16,8 @@ export interface UaBrand {
     version: string;
 }
 
-// The client-hint brand list a Google Chrome build of this Chromium version reports. Same algorithm
-// as Chromium's GenerateBrandVersionList (grease string, grease version and ordering are all seeded
-// by the major version); Electron runs it without the "Google Chrome" entry.
+// client-hint brands Chrome build reports; same algorithm as Chromium's GenerateBrandVersionList
+// (grease, version, order seeded by major); Electron omits "Google Chrome" entry
 export function chromeBrandList(chromiumVersion: string, full: boolean): UaBrand[] {
     const major = parseInt(chromiumVersion, 10);
     const chars = [' ', '(', ':', '-', '.', '/', ')', ';', '=', '?', '_'];

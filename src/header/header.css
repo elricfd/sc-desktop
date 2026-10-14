@@ -47,8 +47,7 @@ html.theme-light {
 }
 
 .custom-header {
-    /* back/forward/reload | tabs | downloads, menu, window controls. Equal outer columns keep the
-       tabs in the middle of the window. */
+    /* back/forward/reload | tabs | downloads, menu, controls; equal outer columns keep tabs centered */
     display: grid;
     grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr);
     align-items: center;
@@ -85,8 +84,7 @@ html.theme-light {
     height: 100%;
 }
 
-/* Reserve space for native macOS traffic light controls. On the column rather than the header,
-   so it does not push the tabs off centre. */
+/* macOS traffic lights: pad column, not header, so tabs stay centered */
 body.platform-darwin .header-side:first-child {
     padding-left: 80px;
 }
@@ -149,7 +147,7 @@ body.platform-darwin .navigation-controls {
     }
 }
 
-/* draggable spacers either side of the tab group, which keep it centered */
+/* draggable spacers either side of tab group, keep it centered */
 .title-bar {
     align-self: stretch;
     cursor: default;
@@ -157,7 +155,7 @@ body.platform-darwin .navigation-controls {
     min-width: 16px;
 }
 
-/* SoundCloud's search box, which main.ts hides in the page itself */
+/* SoundCloud's search box; main.ts hides it in page */
 .header-search {
     display: flex;
     align-items: center;
@@ -203,8 +201,7 @@ body.platform-darwin .navigation-controls {
     display: none;
 }
 
-/* SoundCloud's suggestions for what is being typed. They hang below the title bar, which is as far
-   as this view reaches: header.js has main.ts stretch it down over the page while they are open. */
+/* SoundCloud's suggestions; hang below title bar, main.ts stretches view down while open */
 .header-search {
     position: relative;
 }
@@ -220,7 +217,7 @@ body.platform-darwin .navigation-controls {
     list-style: none;
     border: 1px solid var(--hover-bg);
     border-radius: 8px;
-    /* --header-surface is the custom theme's, when there is one */
+    /* --header-surface: custom theme's, when set */
     background-color: var(--header-surface, var(--header-bg));
     color: var(--header-text);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
@@ -247,7 +244,7 @@ body.platform-darwin .navigation-controls {
     text-overflow: ellipsis;
 }
 
-/* the picture of a person or track of the account's own */
+/* picture of person or track from account's own lists */
 .search-suggestions img {
     flex: none;
     width: 20px;
@@ -265,7 +262,7 @@ body.platform-darwin .navigation-controls {
     background-color: var(--hover-bg);
 }
 
-/* Tabs, laid out like Safari's compact tab bar: one pill, with the selected tab doubling as the URL bar */
+/* tabs: Safari compact tab bar style, one pill, selected tab doubles as URL bar */
 .tab-group {
     display: flex;
     align-items: center;
@@ -344,13 +341,13 @@ body.platform-darwin .navigation-controls {
     flex: 0 1 auto;
 }
 
-/* the address, without https://soundcloud.com/ */
+/* address minus https://soundcloud.com/ */
 .tab-path {
     flex: 1 1 0;
     opacity: 0.5;
 }
 
-/* shown only while the selected tab is being edited as a URL bar; holds the full address */
+/* shown only while selected tab edits as URL bar; full address */
 .tab-url {
     display: none;
     flex: 1;
@@ -399,7 +396,7 @@ body.platform-darwin .navigation-controls {
     display: flex;
 }
 
-/* the last tab cannot be closed from here; closing it would close the window */
+/* last tab can't close from here: would close window */
 .tab-group.single .tab-close {
     display: none;
 }

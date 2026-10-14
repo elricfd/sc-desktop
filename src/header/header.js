@@ -27,7 +27,7 @@ const forcedColorsQuery = window.matchMedia ? window.matchMedia('(forced-colors:
 function applyThemeColors(colors) {
     themeColors = colors;
     if (!colors) {
-        // no custom theme: drop the overrides so the stylesheet's theme classes apply again
+        // no custom theme: drop overrides so stylesheet theme classes apply again
         document.documentElement.style.removeProperty('--header-bg');
         document.documentElement.style.removeProperty('--header-text');
         document.documentElement.style.removeProperty('--header-accent');
@@ -39,7 +39,7 @@ function applyThemeColors(colors) {
     document.documentElement.style.setProperty('--header-bg', colors.primary || colors.background);
     document.documentElement.style.setProperty('--header-text', colors.text);
     document.documentElement.style.setProperty('--header-accent', colors.accent || colors.primary);
-    // what the bar itself is painted with below; the suggestions under the search box match it
+    // bar's own paint, search suggestions match it
     document.documentElement.style.setProperty('--header-surface', colors.surface || colors.background);
 
     const header = document.querySelector('.custom-header');
@@ -184,12 +184,11 @@ document.querySelectorAll('.title-bar').forEach((spacer) =>
     }),
 );
 
-// Tabs. The selected tab is also the URL bar: it shows the address without https://soundcloud.com/,
-// and the full address only while it is being edited.
+// selected tab doubles as URL bar: address minus soundcloud prefix, full while editing
 const tabGroup = document.getElementById('tab-group');
 let tabState = { tabs: [], activeId: null, url: '', display: '', fallbackIcon: '' };
 let renderedTabState = '';
-// a state update that arrived mid-edit or mid-drag; rebuilding the tabs then would drop the input or the drag
+// state that arrived mid-edit or mid-drag: rebuilding would drop input or drag
 let pendingTabState = null;
 
 function renderTabs(state) {
@@ -279,7 +278,7 @@ tabGroup.addEventListener('click', (e) => {
     else ipcRenderer.send('tab-select', tabId(tab));
 });
 
-// middle click closes, as in a browser
+// middle click closes, as browsers do
 tabGroup.addEventListener('auxclick', (e) => {
     if (e.button === 1 && e.target.closest('.tab') && tabState.tabs.length > 1) {
         ipcRenderer.send('tab-close', tabId(e.target));
@@ -298,7 +297,7 @@ tabGroup.addEventListener('keydown', (e) => {
     if (!e.target.matches('.tab-url')) return;
     if (e.key === 'Enter') ipcRenderer.send('navigate-url', e.target.value);
     if (e.key === 'Enter' || e.key === 'Escape') {
-        // not left to focusout alone: that event does not fire while the window is in the background
+        // not focusout alone: it does not fire while window is in background
         stopEditingUrl();
         e.target.blur();
     }
@@ -308,7 +307,7 @@ tabGroup.addEventListener('focusout', (e) => {
     if (e.target.matches('.tab-url')) stopEditingUrl();
 });
 
-// drag a tab onto another to take its place
+// drop onto another tab to take its slot
 tabGroup.addEventListener('dragstart', (e) => {
     const tab = e.target.closest('.tab');
     if (!tab) return;
@@ -344,11 +343,11 @@ document.getElementById('new-tab-btn')?.addEventListener('click', () => {
     ipcRenderer.send('tab-new');
 });
 
-// Search, in place of the box in SoundCloud's own header, with its suggestions underneath.
+// search: replaces SoundCloud's header box, suggestions underneath
 const searchInput = document.getElementById('search-input');
 const suggestions = document.getElementById('search-suggestions');
 let suggestTimer = null;
-// what the list on screen, or on its way, is for; an answer for anything else is out of date
+// list on screen or on its way; stale answers ignored
 let suggestedFor = '';
 
 function search(query) {
@@ -356,8 +355,7 @@ function search(query) {
     searchInput.blur();
 }
 
-// The typed text first, as SoundCloud has it, then what main found: the account's own follows, likes
-// and uploads that match, which are places to go, and the searches SoundCloud suggests. None closes the list.
+// typed text first, then main's matches: own follows, likes, uploads (places) and search suggestions
 function showSuggestions(typed, items) {
     const rows = items.length ? [{ title: typed }, ...items.filter((item) => item.url || item.title !== typed)] : [];
     suggestions.replaceChildren(
@@ -374,14 +372,14 @@ function showSuggestions(typed, items) {
                 row.append(image);
             }
             const title = document.createElement('span');
-            // textContent: the suggestions come from soundcloud.com
+            // textContent: suggestions come from soundcloud.com
             title.textContent = position ? item.title : `Search for “${item.title}”`;
             row.append(title);
             return row;
         }),
     );
     suggestions.hidden = !rows.length;
-    // this view ends at the title bar; main stretches it far enough down for the list and its shadow
+    // view ends at title bar; main stretches it down for list and shadow
     ipcRenderer.send('header-height', rows.length ? Math.ceil(suggestions.getBoundingClientRect().bottom) + 16 : 0);
 }
 
@@ -403,7 +401,7 @@ searchInput?.addEventListener('input', () => {
     }, 150);
 });
 
-// a row that is a place goes there; any other is searched for
+// place rows navigate; others are searched
 function pick(row) {
     if (!row.dataset.url) return search(row.dataset.query);
     ipcRenderer.send('navigate-url', row.dataset.url);
@@ -421,7 +419,7 @@ searchInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') searchInput.blur();
     if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || suggestions.hidden) return;
 
-    // up and down the list, round past either end; the box shows the row it is on
+    // up/down wraps past either end; box shows active row
     e.preventDefault();
     const rows = [...suggestions.children];
     const current = rows.findIndex((row) => row.classList.contains('active'));
@@ -431,7 +429,7 @@ searchInput?.addEventListener('keydown', (e) => {
     searchInput.value = rows[next].dataset.query;
 });
 
-// mousedown, and prevented: a click would come after the box lost focus, which closes the list
+// mousedown + preventDefault: click would land after blur closed list
 suggestions?.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const row = e.target.closest('li');
@@ -441,18 +439,17 @@ suggestions?.addEventListener('mousedown', (e) => {
 });
 
 searchInput?.addEventListener('blur', closeSuggestions);
-// not left to the box's blur alone, which does not fire when the whole window goes to the background
+// not blur alone: it does not fire when whole window goes to background
 window.addEventListener('blur', closeSuggestions);
 
-// like the page's box did, show what the results on screen are for
+// show what results on screen are for, as page's box did
 function syncSearch(url) {
     if (!searchInput || document.activeElement === searchInput) return;
     const { pathname, searchParams } = URL.parse(url) ?? {};
     searchInput.value = pathname?.startsWith('/search') ? (searchParams.get('q') ?? '') : '';
 }
 
-// Downloads: opens the progress popup. Shown, and lit up, while something is downloading; the
-// rest of the time only if Settings says to keep it.
+// downloads: opens progress popup; lit while downloading, else only if Settings keeps it
 const downloadsBtn = document.getElementById('downloads-btn');
 let downloadsButtonAlways = false;
 let downloadsActive = false;
@@ -510,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDownloadsButton();
     });
 
-    // tabs opened before this page finished loading
+    // tabs opened before page finished loading
     ipcRenderer.invoke('get-tab-state').then((state) => {
         renderTabs(state);
         syncSearch(state.url);
@@ -520,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (colors) applyThemeColors(colors);
     });
 
-    // seed once; further changes arrive on 'window-maximized-changed'
+    // seed once; later changes come via 'window-maximized-changed'
     ipcRenderer.invoke('is-maximized').then((maximized) => {
         if (isMaximized !== maximized) {
             isMaximized = maximized;

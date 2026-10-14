@@ -1,12 +1,5 @@
-/**
- * electron-store re-reads, re-parses and (with an `encryptionKey`) re-decrypts the config
- * file on every get(), and settings are read on hot paths: per track update, per theme
- * application, per window resize.
- *
- * This keeps the parsed config in memory and drops it on any write through the same
- * instance. Only plain top-level string keys are served from the cache; dot-paths and
- * anything else go to the original implementation.
- */
+/** electron-store re-reads and re-decrypts config on every get(), and settings are hot-path: cache it,
+ * drop on any write via same instance; only plain top-level keys cached, dot-paths go to original */
 
 interface CacheableStore {
     get(key: string, defaultValue?: unknown): unknown;

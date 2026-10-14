@@ -49,7 +49,7 @@ describe('updateZip', () => {
     });
 });
 
-// kill -0 and the rest behave as on macOS on any POSIX system; Windows has no /bin/sh to run it with
+// kill -0 etc. match macOS on any POSIX system; Windows has no /bin/sh
 describe.skipIf(process.platform === 'win32')('the swap that runs as the app quits', () => {
     function setUp() {
         const root = mkdtempSync(join(tmpdir(), 'sc-desktop-swap-'));
@@ -66,13 +66,12 @@ describe.skipIf(process.platform === 'win32')('the swap that runs as the app qui
         const { root, bundle, staging, staged } = setUp();
         const running = spawn('sleep', ['1']);
         const exited = new Promise((resolve) => running.once('exit', resolve));
-        // Not spawnSync: the "app" is this process's child, and stays in the process table, alive as
-        // far as the script can tell, until this process is free to collect it.
+        // not spawnSync: "app" is our child, alive in process table until collected
         const status = await new Promise((resolve) =>
             spawn('/bin/sh', swapArgs(running.pid!, bundle, staged, staging)).once('close', resolve),
         );
         expect(status).toBe(0);
-        // it could only have got this far once the "app" had exited
+        // only gets here once "app" has exited
         expect(await exited).toBe(0);
         expect(existsSync(join(bundle, 'new'))).toBe(true);
         expect(existsSync(join(bundle, 'old'))).toBe(false);
@@ -83,7 +82,7 @@ describe.skipIf(process.platform === 'win32')('the swap that runs as the app qui
 
     it('puts the old bundle back when the new one cannot be moved in', () => {
         const { root, bundle, staging } = setUp();
-        // the pid of something that has already exited
+        // pid of already-exited process
         const gone = spawnSync('true').pid;
         spawnSync('/bin/sh', swapArgs(gone, bundle, join(staging, 'missing.app'), staging));
         expect(existsSync(join(bundle, 'old'))).toBe(true);

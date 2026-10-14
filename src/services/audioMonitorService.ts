@@ -1,12 +1,12 @@
 export const audioMonitorScript = `
 (function() {
-  // Avoid duplicate injections
+  // skip duplicate injections
   if (window.__soundCloudMonitorActive) return;
   window.__soundCloudMonitorActive = true;
   
   console.debug('monitor script injected');
   
-  // Track current playback state
+  // playback state
   let isCurrentlyPlaying = false;
   let currentTrackTitle = '';
   let currentTrackAuthor = '';
@@ -65,7 +65,7 @@ export const audioMonitorScript = `
     }
   }
   
-  // Monitor play button state changes directly
+  // play button class changes
   function setupPlaybackObserver() {
     const playButton = document.querySelector('.playControls__play');
     if (!playButton) return false;
@@ -76,25 +76,25 @@ export const audioMonitorScript = `
     
     observer.observe(playButton, { 
       attributes: true,
-      attributeFilter: ['class'] // class changes indicate play/pause. can also do title and label
+      attributeFilter: ['class'] // class flips on play/pause; title or label could work too
     });
     
     return true;
   }
   
-  // Monitor playback controls for direct clicks
+  // playback controls: direct clicks
   function monitorPlaybackControls() {
     const playPauseButton = document.querySelector('.playControl');
     if (playPauseButton && !playPauseButton.__monitored) {
       playPauseButton.__monitored = true;
       playPauseButton.addEventListener('click', () => {
         console.debug('Play/pause button');
-        // Small delay to allow the class to update
+        // short delay so class can update
         setTimeout(notifyPlaybackStateChange, 50);
       });
     }
     
-    // Monitor prev/next buttons too as they affect playback
+    // prev/next also affect playback
     const prevButton = document.querySelector('.skipControl__previous');
     const nextButton = document.querySelector('.skipControl__next');
     
@@ -105,7 +105,7 @@ export const audioMonitorScript = `
         currentTrackTitle = '';
         currentTrackAuthor = '';
         currentTrackUrl = '';
-        // Wait a bit longer for track to change
+        // longer wait for track change
         setTimeout(notifyPlaybackStateChange, 300);
       });
     }
@@ -117,12 +117,12 @@ export const audioMonitorScript = `
         currentTrackTitle = '';
         currentTrackAuthor = '';
         currentTrackUrl = '';
-        // Wait a bit longer for track to change
+        // longer wait for track change
         setTimeout(notifyPlaybackStateChange, 300);
       });
     }
 
-    // Monitor like button interaction to instantly trigger UI mirror
+    // like button: update UI mirror instantly
     const likeButton = document.querySelector('.playbackSoundBadge__like');
     if (likeButton && !likeButton.__monitored) {
       likeButton.__monitored = true;
@@ -167,7 +167,7 @@ export const audioMonitorScript = `
             const isDragging = timelineElement.classList.contains('is-dragging');
             
             if (!isDragging && timelineElement.__wasDragging) {
-              // Dragging ended - update the presence with new position
+              // drag ended: update presence with new position
               console.debug('Seek completed - updating time position');
               setTimeout(() => {
                 const trackInfo = getTrackInfo();
@@ -191,7 +191,7 @@ export const audioMonitorScript = `
     return !!timelineElement;
   }
   
-  // Monitor elapsed time element for changes (catches loops)
+  // elapsed time changes, catches loops
   function monitorElapsedTime() {
     const elapsedElement = document.querySelector('.playbackTimeline__timePassed span:last-child');
     
@@ -203,18 +203,14 @@ export const audioMonitorScript = `
       elapsedObserver = new MutationObserver(() => {
         const trackInfo = getTrackInfo();
         
-        // Only update if one of these have changed:
-        // 1. Track changed (title/author/url)
-        // 2. Play state changed
-        // 3. Elapsed time reset to start (loop detection)
-        // 4. Like state changed
+        // update only if track, play state, loop (elapsed reset) or like changed
         const trackChanged = trackInfo.title !== currentTrackTitle ||
                             trackInfo.author !== currentTrackAuthor ||
                             trackInfo.url !== currentTrackUrl;
         const playStateChanged = trackInfo.isPlaying !== isCurrentlyPlaying;
         const likeChanged = trackInfo.isLiked !== isCurrentTrackLiked;
         
-        // Check if it's near the start (0-3 seconds = loop)
+        // near start (0-3s) = loop
         const parseTimeToSeconds = (time) => {
           if (!time) return 0;
           const parts = time.split(':').map(p => parseInt(p) || 0);
@@ -232,7 +228,7 @@ export const audioMonitorScript = `
         }
       });
       
-      // Watch for text content changes
+      // text content changes
       const parentEl = elapsedElement.parentElement;
       if (parentEl) {
         elapsedObserver.observe(parentEl, {
@@ -255,7 +251,6 @@ export const audioMonitorScript = `
     return false;
   }
   
-  // Initial setup
   function initialize() {
     const playbackObserverSet = setupPlaybackObserver();
     monitorPlaybackControls();
@@ -263,7 +258,7 @@ export const audioMonitorScript = `
     window.__initialStateSent = false;
     notifyPlaybackStateChange();
     
-    // Watch for dynamically loaded elements
+    // watch for elements loaded later
     if (!playbackObserverSet) {
       const documentObserver = new MutationObserver(() => {
         if (!document.querySelector('.playControls__play')) return;
@@ -280,11 +275,10 @@ export const audioMonitorScript = `
       });
     }
     
-    // Start monitoring elapsed time for loop detection
+    // elapsed time for loop detection
     monitorElapsedTime();
     
-    // Re-monitor elements that get replaced. The page mutates constantly, so this is
-    // coalesced to one pass per frame.
+    // re-monitor replaced elements; page mutates constantly, so one rescan per frame
     let rescanQueued = false;
     const bodyObserver = new MutationObserver(() => {
       if (rescanQueued) return;
@@ -334,7 +328,7 @@ export const audioMonitorScript = `
     });
   }
   
-  // Cleanup on page unload
+  // cleanup on unload
   window.addEventListener('beforeunload', () => {
     if (elapsedObserver) {
       elapsedObserver.disconnect();
@@ -342,7 +336,6 @@ export const audioMonitorScript = `
     }
   });
   
-  // Start monitoring
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     initialize();
   } else {

@@ -5,11 +5,11 @@ interface Page {
     hydration?: unknown[];
     resources?: string[];
     cookie?: string;
-    /** what the API answers with, by the path asked for */
+    /** API answer, keyed by path */
     api?: Record<string, unknown[]>;
 }
 
-// runs the script as the page would, with the page's globals stood in for
+// run script as page would, page globals stubbed
 function run(query: string, page: Page, window: Record<string, unknown> = {}) {
     const asked: { url: URL; authorization?: string }[] = [];
     window.__sc_hydration = page.hydration;
@@ -36,7 +36,7 @@ describe('suggestScript', () => {
     it('asks SoundCloud as the page, with the client id the page was given', async () => {
         const { value, asked } = await run('flum', { hydration, api: queries });
         expect(value).toEqual([{ title: 'flume' }, { title: 'flume remix' }]);
-        // signed out: only the searches, and no session to send
+        // signed out: searches only, no session sent
         expect(asked.map(({ url }) => url.href)).toEqual([
             'https://api-v2.soundcloud.com/search/queries?q=flum&client_id=abc&limit=10',
         ]);
@@ -55,7 +55,7 @@ describe('suggestScript', () => {
             ...queries,
             '/me/shortcuts/followings': [flume, { kind: 'user', username: 'Other', permalink_url: 'o' }],
             '/me/shortcuts/track-likes': [track],
-            // also liked: listed once
+            // liked too: listed once
             '/me/shortcuts/own-tracks': [track],
         };
         const window = {};
@@ -95,7 +95,7 @@ describe('readSuggestions', () => {
                 { title: 'a' },
                 { title: 'b', url: 'https://soundcloud.com/b', image: 'https://i1.sndcdn.com/b.jpg', round: true },
                 { title: 'c', image: 'https://evil.example/c.jpg' },
-                // left out whole
+                // dropped whole
                 { title: 'd', url: 'https://evil.example/d' },
                 { title: 'e', url: 'javascript:alert(1)' },
                 { title: 'x'.repeat(201) },

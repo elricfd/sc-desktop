@@ -1,5 +1,4 @@
-// Toast behaviour. A separate file because the page is served under a CSP that refuses
-// inline script -- see src/utils/appProtocol.ts.
+// toast script: separate file, page CSP refuses inline script; see appProtocol.ts
 
 setTimeout(() => {
     document.body.style.opacity = '1';

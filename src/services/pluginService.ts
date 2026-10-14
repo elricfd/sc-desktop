@@ -12,16 +12,12 @@ export interface PluginInfo {
     id: string;
     filePath: string;
     metadata: FileMetadata;
-    /** sha256 of the source that was scanned, used to detect swapped files */
+    /** sha256 of scanned source, detects swapped files */
     sourceHash: string;
     enabled: boolean;
 }
 
-/**
- * Stored approvals: plugin id -> sha256 of the source the user enabled.
- * `true` is the legacy shape written by older builds and is grandfathered in on
- * first scan, then rewritten as a hash.
- */
+/** approvals: plugin id -> sha256 of enabled source; legacy `true` is grandfathered, rewritten as hash */
 type PluginApprovals = Record<string, string | boolean>;
 
 interface PluginRuntime {
@@ -48,7 +44,6 @@ export class PluginService {
 
     constructor(store: ElectronStore) {
         this.store = store;
-        // assign dynamic environment path
         this.pluginsPath = this.getPluginsPath();
         this.ensurePluginsDirectory();
         this.scanPlugins();
@@ -88,10 +83,7 @@ export class PluginService {
 
                     if (!metadata.name) metadata.name = id;
 
-                    // a plugin stays enabled only while its file is byte-for-byte what
-                    // the user approved. dropping a different file under a
-                    // previously-enabled name leaves it disabled until re-approved,
-                    // rather than executing on sight.
+                    // enabled only while file matches approved hash; swapped file under same name stays disabled
                     const approved = approvals[id];
                     const enabled = approved === true || approved === sourceHash;
 
@@ -156,19 +148,13 @@ export class PluginService {
             if (this.runtimes.has(id)) return true;
 
             const source = readFileSync(plugin.filePath, 'utf-8');
-            // approve exactly what runs, so the stored hash can never drift from the
-            // code that was actually executed
+            // hash what runs, so stored hash never drifts from executed code
             plugin.sourceHash = createHash('sha256').update(source).digest('hex');
 
             const pluginExports: PluginExports = {};
 
-            // NOTE: node's `vm` is NOT a security boundary, and the object below is not
-            // a sandbox. a plugin can reach the real global through any function it is
-            // handed -- `this.constructor.constructor('return process')()` is enough --
-            // and from there it has the full main-process Node API: fs, child_process,
-            // the lot. this only shapes a CommonJS-like module environment for
-            // convenience. plugins are fully trusted code; installing one is equivalent
-            // to installing a native application.
+            // NOTE: vm is no security boundary, globals below are no sandbox: any handed function reaches real global
+            // (this.constructor.constructor('return process')()) gives full Node API. plugins are fully trusted
             const pluginGlobals = {
                 module: { exports: pluginExports },
                 exports: pluginExports,
@@ -219,12 +205,7 @@ export class PluginService {
         this.runtimes.delete(id);
     }
 
-    /**
-     * Plugin ids come from filenames, which the user controls. Restrict them to
-     * characters that cannot terminate a JS string literal or an HTML attribute before
-     * embedding them in injected source. Hyphens are excluded too, because the same
-     * value is used to build the `__scrpc_cleanup_*` identifier.
-     */
+    /** ids from filenames: letters, digits, _ only, safe in JS strings, HTML attrs and identifiers */
     private static safeId(id: string): string {
         return id.replace(/[^a-zA-Z0-9_]/g, '_');
     }
@@ -290,8 +271,7 @@ export class PluginService {
     }
 
     private persistEnabledState(): void {
-        // store the approved source hash rather than a bare flag, so the approval is
-        // tied to specific file contents
+        // store source hash, not bool: approval tied to exact file contents
         const map: Record<string, string> = {};
         for (const [id, plugin] of this.plugins) {
             if (plugin.enabled) map[id] = plugin.sourceHash;
@@ -326,9 +306,8 @@ export class PluginService {
         this.plugins.clear();
         this.scanPlugins();
 
-        // scanPlugins already resolved enabled state against the stored approvals, so a
-        // file swapped in under a previously-enabled name comes back disabled. do not
-        // re-enable by id here -- that would run whatever now sits at that filename.
+        // scanPlugins already checked stored hashes: swapped file under old name stays disabled
+        // do not re-enable by id here, that would run whatever now sits at that filename
         for (const [id, plugin] of this.plugins) {
             if (plugin.enabled) this.activatePlugin(id);
         }
@@ -358,7 +337,7 @@ export class PluginService {
     }
 
     public getPluginsPath(): string {
-        // route dev mode to workspace folder &&& production mode to user profile
+        // dev: workspace plugins folder; packaged: user profile
         return app.isPackaged ? path.join(app.getPath('userData'), 'plugins') : path.join(process.cwd(), 'plugins');
     }
 
@@ -378,8 +357,7 @@ export class PluginService {
 
         ipcMain.handle(
             'set-plugin-enabled',
-            // activating a plugin runs main-process code, so this must never be
-            // reachable from the view that loads soundcloud.com
+            // runs main-process code: never reachable from soundcloud.com view
             trustedHandle((_, id: string, enabled: boolean) => {
                 return this.setPluginEnabled(id, enabled);
             }, 'set-plugin-enabled'),

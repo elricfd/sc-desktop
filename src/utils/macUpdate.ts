@@ -2,11 +2,7 @@ import { posix } from 'path';
 
 const RELEASES = 'https://github.com/elricfd/sc-desktop/releases/download';
 
-/**
- * The .app this executable runs from, or null when that is no place to update: still on the disk
- * image it came on, or run by macOS from a read-only copy elsewhere, as it does with an app that
- * was never moved out of Downloads.
- */
+/** .app this executable runs from, or null if no place to update: disk image, or translocated copy */
 export function installedBundle(execPath: string): string | null {
     // <bundle>.app/Contents/MacOS/<name>
     const bundle = posix.resolve(execPath, '../../..');
@@ -15,11 +11,8 @@ export function installedBundle(execPath: string): string | null {
     return bundle;
 }
 
-/**
- * Where to get the zip of a release, and the checksum it has to have, out of the `files` of the
- * release's manifest. Both are put into an address and compared against a download, so anything
- * but a plain version and file name is refused.
- */
+/** zip url and sha512 from release manifest's `files`, both checked against download
+ * so only plain version and file names pass */
 export function updateZip(version: unknown, files: unknown): { url: string; sha512: string } | null {
     if (typeof version !== 'string' || !/^[\w.+-]+$/.test(version) || !Array.isArray(files)) return null;
     const file = files.find(
@@ -29,10 +22,8 @@ export function updateZip(version: unknown, files: unknown): { url: string; sha5
     return file ? { url: `${RELEASES}/v${version}/${file.url}`, sha512: file.sha512 } : null;
 }
 
-// Run as the app quits, since a bundle cannot be replaced under a running app: waits for the app
-// ($1, its pid) to be gone, then puts the new bundle ($3) where the old one is ($2). The old one is
-// only moved aside until the new one is in place, and put back if that fails. $4 is the folder the
-// new one was unpacked in.
+// runs at quit, as running bundle cannot be replaced: waits for pid $1, then swaps $3 in for $2
+// $2 is moved aside and restored on failure; $4 is unpack folder
 const SWAP_SCRIPT = `
 tries=0
 while kill -0 "$1" 2>/dev/null; do
@@ -49,7 +40,7 @@ else
 fi
 `;
 
-/** Arguments for /bin/sh. The paths are handed over as parameters, never written into the script. */
+/** args for /bin/sh; paths passed as parameters, never written into script */
 export function swapArgs(pid: number, bundle: string, staged: string, staging: string): string[] {
     return ['-c', SWAP_SCRIPT, 'sh', String(pid), bundle, staged, staging];
 }

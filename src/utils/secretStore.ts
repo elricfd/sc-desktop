@@ -1,11 +1,8 @@
 import { safeStorage } from 'electron';
 import type ElectronStore from 'electron-store';
 
-/**
- * The config store's `encryptionKey` is a literal in this repository, so it only guards
- * against casual file editing. Credentials go through the OS keystore instead (Keychain,
- * DPAPI, libsecret/kwallet) and sit in the config file as ciphertext.
- */
+/** config store's encryptionKey is literal in this repo, guards casual edits only; credentials go
+ * through OS keystore (Keychain, DPAPI, libsecret/kwallet) and sit in config as ciphertext */
 
 const ENCRYPTED_PREFIX = 'enc.v1:';
 
@@ -35,10 +32,7 @@ function warnUnavailableOnce(): void {
     );
 }
 
-/**
- * Read a secret. Values written by older builds are plain and are returned as-is, so
- * upgrading never loses a saved credential.
- */
+/** read secret; plaintext from older builds returned as-is, so upgrade never loses saved credential */
 export function readSecret<T>(store: ElectronStore, key: SecretKey, fallback: T): T {
     const raw = store.get(key);
 
@@ -55,8 +49,7 @@ export function readSecret<T>(store: ElectronStore, key: SecretKey, fallback: T)
         const buffer = Buffer.from(raw.slice(ENCRYPTED_PREFIX.length), 'base64');
         return JSON.parse(safeStorage.decryptString(buffer)) as T;
     } catch (error) {
-        // usually means the OS keystore entry was rotated or the profile was copied
-        // between machines; treat it as unset rather than crashing
+        // keystore entry rotated or profile copied between machines: treat as unset, don't crash
         console.error(`Failed to decrypt "${key}"; treating it as unset.`, error);
         return fallback;
     }
@@ -83,10 +76,7 @@ export function writeSecret(store: ElectronStore, key: SecretKey, value: unknown
     }
 }
 
-/**
- * Re-write any plaintext secret through the OS keystore. Must run after `app.whenReady`.
- * Safe to call repeatedly -- already-encrypted values are left alone.
- */
+/** re-write plaintext secrets through OS keystore; run after `app.whenReady`, safe to repeat */
 export function migrateSecrets(store: ElectronStore): void {
     if (!encryptionAvailable()) {
         warnUnavailableOnce();

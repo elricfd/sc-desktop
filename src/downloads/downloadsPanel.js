@@ -1,9 +1,5 @@
-// Downloads popup behaviour. A separate file because the page is served under a CSP that refuses
-// inline script -- see src/utils/appProtocol.ts.
-//
-// The settings panel loads it too, for the list at its top: it has #list, #empty, #drm and #clear like
-// the popup, and settingsPanel.js stands in for downloadsAPI. Top-level names here share that page
-// with settingsPanel.js.
+// downloads popup; separate file since CSP refuses inline script (see src/utils/appProtocol.ts)
+// settings panel loads it too, same ids; settingsPanel.js stands in for downloadsAPI, names shared
 
 const api = window.downloadsAPI;
 const list = document.getElementById('list');
@@ -56,7 +52,7 @@ function describe(item) {
                 'Done',
                 item.files > 1 ? `${item.files} tracks` : '',
                 item.size ? formatBytes(item.size) : '',
-                // a DRM-protected track that was fetched from YouTube instead
+                // DRM track fetched from YouTube instead
                 item.lowQuality ? `${item.files > 1 ? `${item.lowQuality} ` : ''}low quality (from YouTube)` : '',
                 item.skipped.length ? `${item.skipped.length} skipped (${[...new Set(item.skipped)].join(', ')})` : '',
             );
@@ -83,7 +79,7 @@ function createRow(item) {
     return row;
 }
 
-// Rows are updated in place: rebuilding them five times a second would swallow clicks on their buttons.
+// rows updated in place: rebuilding 5x/s would swallow button clicks
 function render(items) {
     for (const [id, row] of rows) {
         if (!items.some((item) => item.id === id)) {
@@ -102,7 +98,7 @@ function render(items) {
 
         const [title, button, progress, detail] = row.children;
         row.className = `row ${item.status}`;
-        // textContent throughout: titles and error text come from soundcloud.com and yt-dlp
+        // textContent only: titles and errors come from soundcloud.com and yt-dlp
         title.textContent = item.title;
         title.title = item.title;
         detail.textContent = describe(item);
@@ -123,7 +119,7 @@ function render(items) {
     const names = [...new Set(items.flatMap((item) => item.drm))].join('\n');
     drm.hidden = !names;
     drm.firstElementChild.textContent = `DRM-protected tracks (${names ? names.split('\n').length : 0})`;
-    // only when it changes: writing it again would drop a selection in it
+    // write on change only: rewriting drops selection in it
     if (drmList.textContent !== names) drmList.textContent = names;
 }
 

@@ -1,5 +1,4 @@
-// Settings panel behaviour. A separate file because the page is served under a CSP that
-// refuses inline script -- see src/utils/appProtocol.ts.
+// settings panel: separate file, page CSP refuses inline script; see appProtocol.ts
 
 const ipcRenderer = {
     send: (channel, ...args) => window.settingsAPI.send(channel, ...args),
@@ -194,7 +193,7 @@ document.getElementById('refreshPlugins')?.addEventListener('click', async () =>
     }
 });
 
-// Settings whose control id is the setting key and which need nothing beyond being stored.
+// control id = setting key; needs nothing beyond storing
 // prettier-ignore
 const CHECKBOX_SETTINGS = [
     'hidePromotions', 'hideEventsNearYou', 'hideArtistUpsells', 'downloadsButtonAlways',
@@ -226,8 +225,7 @@ for (const key of TEXT_SETTINGS) {
     });
 }
 
-// The list of downloads at the top is drawn by the popup's own script, downloadsPanel.js, which the
-// build copies in next to this one and the page loads after it. This is what it talks to.
+// downloads list drawn by downloadsPanel.js (copied beside this, loaded after); its API
 window.downloadsAPI = {
     send: ipcRenderer.send,
     getDownloads: () => ipcRenderer.invoke('get-downloads'),
@@ -235,7 +233,7 @@ window.downloadsAPI = {
 };
 
 document.getElementById('chooseDownloadFolder')?.addEventListener('click', async () => {
-    // main shows the native folder picker and stores the choice; this only displays it
+    // main shows folder picker and stores choice; this only displays it
     document.getElementById('downloadFolderPath').textContent = await ipcRenderer.invoke('choose-download-folder');
 });
 
@@ -534,7 +532,7 @@ ipcRenderer.on('update-translations', () => {
     });
 });
 
-// SettingsManager plays the slide-out and then takes the view away
+// SettingsManager plays slide-out, then takes view away
 const closePanel = () => ipcRenderer.send('toggle-settings');
 document.getElementById('close-settings').addEventListener('click', closePanel);
 document.addEventListener('keydown', (e) => {

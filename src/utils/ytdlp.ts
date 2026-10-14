@@ -3,7 +3,7 @@ import { homedir } from 'os';
 import { delimiter, join } from 'path';
 
 export const DEFAULT_TEMPLATE = '%(uploader)s - %(title)s.%(ext)s';
-// `playlist_release_year` is not a yt-dlp field: buildArgs hands it in
+// `playlist_release_year` not yt-dlp field: buildArgs passes it in
 export const DEFAULT_FOLDER = '%(playlist_uploader)s - %(playlist_title)s';
 
 const PROGRESS_PREFIX = 'SCRPC_PROGRESS ';
@@ -11,8 +11,7 @@ const FILE_PREFIX = 'SCRPC_FILE ';
 const PLAYLIST_PREFIX = 'SCRPC_PLAYLIST ';
 const TRACK_PREFIX = 'SCRPC_TRACK ';
 
-// One JSON object per progress tick. `|null` because a missing field would otherwise print as a
-// bare NA, and `j` escapes titles to ASCII, so the line survives any console encoding.
+// JSON per progress tick; `|null` so missing fields print as null, not bare NA; `j` keeps titles ASCII
 const PROGRESS_FIELDS = {
     status: 'progress.status',
     downloaded: 'progress.downloaded_bytes',
@@ -34,21 +33,21 @@ const PROGRESS_TEMPLATE =
 export interface DownloadOptions {
     folder: string;
     template: string;
-    /** read the account options built by `authConfig` from stdin */
+    /** account options from `authConfig`, read from stdin */
     auth?: boolean;
-    /** fetch only these positions of a playlist: the ones a first pass left without a file */
+    /** playlist positions to fetch: those left without file by first pass */
     items?: number[];
-    /** write the cover and tags into each file; yt-dlp needs ffmpeg for it, see `hasFfmpeg` */
+    /** embed cover and tags; needs ffmpeg, see `hasFfmpeg` */
     tags?: boolean;
-    /** folder template for an album or playlist, put in front of `template`; blank for no folder */
+    /** folder template for albums and playlists, before `template`; blank for none */
     playlistFolder?: string;
-    /** the album's or playlist's release year, from `playlistArgs` */
+    /** release year, from `playlistArgs` */
     year?: number | null;
-    /** instead of FORMAT, for a download that is not from SoundCloud */
+    /** replaces FORMAT, for non-SoundCloud downloads */
     format?: string;
 }
 
-/** Albums and playlists, which both live under /sets/. */
+/** albums and playlists, both under /sets/ */
 export function isSet(url: string): boolean {
     try {
         return new URL(url).pathname.includes('/sets/');
@@ -59,20 +58,16 @@ export function isSet(url: string): boolean {
 
 export interface PlaylistInfo {
     year: number | null;
-    /** where the cover was written, or null when the album or playlist has none */
+    /** cover path, or null if none */
     cover: string | null;
 }
 
-/**
- * A quick first run for an album or playlist, for two things the download itself cannot give:
- * its release year, which yt-dlp tells none of its tracks, and its cover, which yt-dlp does not
- * write in a run that embeds the tracks' covers. The cover lands in `folder` as `cover` plus its
- * extension; `parsePlaylist` reads the answer.
- */
+/** quick first run for albums and playlists, for year and cover, which full runs cannot give
+ * (no year per track, no cover once tracks embed theirs); cover goes to `folder`, see `parsePlaylist` */
 export function playlistArgs(url: string, options: { auth?: boolean; folder: string; cover: string }): string[] {
     return [
         ...(options.auth ? ['--config-locations', '-'] : []),
-        // the tracks are only listed, not looked up
+        // list only, no lookup
         '--flat-playlist',
         '--write-thumbnail',
         '-P',
@@ -90,7 +85,7 @@ export function parsePlaylist(line: string): PlaylistInfo | null {
     if (!line.startsWith(PLAYLIST_PREFIX)) return null;
     try {
         const raw = JSON.parse(line.slice(PLAYLIST_PREFIX.length)) as Record<string, unknown>;
-        // one entry per size of the cover, with a path only for the one that was written
+        // one entry per cover size, path only for written one
         const covers: unknown[] = Array.isArray(raw.cover) ? raw.cover : [];
         const cover = covers.find((path): path is string => typeof path === 'string') ?? null;
         return { year: numberOrNull(raw.year), cover };
@@ -99,26 +94,18 @@ export function parsePlaylist(line: string): PlaylistInfo | null {
     }
 }
 
-/**
- * yt-dlp options that sign it in to SoundCloud as the app's logged-in account, which is what makes
- * Go+ streams and uploader-enabled original files available. Written to yt-dlp's stdin instead of
- * its command line, where any local process could read the token.
- *
- * The token comes from a cookie, i.e. from the web, and this text is parsed as options: anything
- * but a plain token is refused, or a crafted cookie could smuggle in `--exec`.
- */
+/** yt-dlp sign-in options for app account: Go+ streams, uploader originals; on stdin, off command line
+ * cookie token is parsed as options: plain tokens only, else `--exec` can be injected */
 export function authConfig(token: string): string | null {
     return /^[A-Za-z0-9_-]{1,256}$/.test(token) ? `--username oauth\n--password ${token}\n` : null;
 }
 
-// The uploader's original file when they offer one (SoundCloud only hands it to a signed-in account),
-// otherwise the best full stream. Previews are excluded: a Go+ track this account cannot play would
-// otherwise "succeed" as its 30-second sample.
+// uploader's original when offered (signed-in only), else best full stream; previews excluded,
+// since unplayable Go+ track would "succeed" as its 30s sample
 const FORMAT = 'download/bestaudio[format_id!*=preview]';
 
-// Saved as SoundCloud serves it. There is deliberately no conversion option: re-encoding a lossy
-// stream to FLAC or WAV only produces a bigger file that claims to be lossless. The cover and tags
-// go into the container around the audio, which is copied as it is.
+// saved as served, no conversion: re-encoding lossy to FLAC/WAV only bloats it and claims lossless
+// cover and tags go into container; audio copied as is
 export function buildArgs(url: string, options: DownloadOptions): string[] {
     const file = options.template.trim() || DEFAULT_TEMPLATE;
     const folder = options.playlistFolder?.trim();
@@ -126,17 +113,16 @@ export function buildArgs(url: string, options: DownloadOptions): string[] {
         ...(options.auth ? ['--config-locations', '-'] : []),
         ...(options.items?.length ? ['--playlist-items', options.items.join(',')] : []),
         ...(options.tags ? ['--embed-thumbnail', '--embed-metadata'] : []),
-        // gives every track a field of that name, for the folder template to use
+        // per-track field for folder template to use
         ...(options.year ? ['--parse-metadata', `${options.year}:%(playlist_release_year)s`] : []),
         '--newline',
-        // --print implies --quiet, which would drop the progress lines
+        // --print implies --quiet, which drops progress lines
         '--progress',
         '--progress-template',
         PROGRESS_TEMPLATE,
         '--print',
-        // Printed before the cover and tags are written, so a file that cannot take them (a WAV has no
-        // place for a cover) still counts as saved. The position comes with the file because a file
-        // that was already there reports no progress.
+        // printed before cover and tags are written, so files that cannot take them (WAV) still count as saved;
+        // position rides along: files already present report no progress
         `post_process:${FILE_PREFIX}{"file":%(filepath)j,"index":%(playlist_index|null)j,"count":%(n_entries|null)j}`,
         '-f',
         options.format ?? FORMAT,
@@ -144,32 +130,29 @@ export function buildArgs(url: string, options: DownloadOptions): string[] {
         options.folder,
         '-o',
         folder ? `${folder}/${file}` : file,
-        // everything after this is a URL, never an option
+        // rest is URLs, never options
         '--',
         url,
     ];
 }
 
-/**
- * Why yt-dlp left a track out, for the popup, or null for any other line. Read off the failure itself:
- * asking SoundCloud about every track up front would double the requests. yt-dlp skips such a track
- * and carries on with the rest of an album or playlist.
- */
+/** skip reason for popup, or null for other lines; read off failure, no up-front lookup
+ * (per-track lookups would double requests) */
 export function skipReason(line: string): string | null {
     if (!line.startsWith('ERROR:')) return null;
     if (/DRM protected/i.test(line)) return 'DRM-protected';
-    // only previews were left for FORMAT to refuse
+    // only previews left, which FORMAT refuses
     if (/Requested format is not available/i.test(line)) return 'Go+ only';
     if (/HTTP Error 40[13]/.test(line)) return 'not authorized';
     return null;
 }
 
-/** The id of the track a DRM failure is about, which is all that line says of it. */
+/** track id from DRM error line; line gives nothing else */
 export function drmId(line: string): string | null {
     return /^ERROR: \[soundcloud\] (\d+): .*DRM protected/i.exec(line)?.[1] ?? null;
 }
 
-/** A DRM-protected track as SoundCloud describes it: `name` for the popup's list, the rest to look for it elsewhere. */
+/** DRM-protected track as SoundCloud describes it: `name` for popup list, rest to find it elsewhere */
 export interface TrackInfo {
     id: string;
     name: string;
@@ -178,11 +161,8 @@ export interface TrackInfo {
     duration: number | null;
 }
 
-/**
- * A run that downloads nothing and only describes the tracks with these ids, for the popup's list of
- * DRM-protected ones and to look for them elsewhere. `--ignore-no-formats-error` is what lets yt-dlp
- * get as far as their titles; `parseTrack` reads the answer.
- */
+/** describe-only run (no download) for these track ids: DRM list, and lookups elsewhere
+ * `--ignore-no-formats-error` lets yt-dlp reach their titles, see `parseTrack` */
 export function lookupArgs(ids: string[], options: { auth?: boolean } = {}): string[] {
     return [
         ...(options.auth ? ['--config-locations', '-'] : []),
@@ -204,7 +184,7 @@ export function parseTrack(line: string): TrackInfo | null {
         return {
             id: raw.id,
             name,
-            // the artist a label credits, when there is one, and not the label's own account
+            // credited artist, not label's own account
             artist: stringOrNull(raw.artist) ?? stringOrNull(raw.uploader) ?? '',
             title: stringOrNull(raw.title) ?? '',
             duration: numberOrNull(raw.duration),
@@ -216,14 +196,9 @@ export function parseTrack(line: string): TrackInfo | null {
 
 const query = (track: TrackInfo) => `${track.artist} ${track.title}`.trim();
 
-/**
- * The same track from YouTube, for when SoundCloud only has it DRM-protected. Lower quality than
- * SoundCloud's own stream, which the popup says. m4a because the cover and tags fit into it.
- * ponytail: takes the first search hit unchecked; compare its duration if wrong songs turn up
- */
+/** YouTube copy for DRM-protected tracks; lower quality, m4a so cover and tags fit */
 export function searchArgs(track: TrackInfo, options: { folder: string; tags?: boolean }): string[] {
-    // The name is SoundCloud's, as the hit's own title is anyone's guess. It is literal text in a
-    // template: no path separators, and no % for yt-dlp to read as a field.
+    // SoundCloud's name, as hit titles are guesses; literal template text: no separators or bare %
     const name = [track.artist, track.title]
         .filter(Boolean)
         .join(' - ')
@@ -240,11 +215,8 @@ export function searchArgs(track: TrackInfo, options: { folder: string; tags?: b
 export const deezerSearchUrl = (track: TrackInfo) =>
     `https://api.deezer.com/search?${new URLSearchParams({ q: query(track), limit: '5' })}`;
 
-/**
- * The Deezer address of a track, for deemix, out of the answer to `deezerSearchUrl`: the first hit
- * as long as the track, as a search always finds something. The address is handed to a program,
- * so anything but a plain track link is refused.
- */
+/** Deezer track address for deemix, from `deezerSearchUrl` answer: first hit of matching length
+ * (search always finds something); only plain track links pass, since it goes to external program */
 export function pickDeezer(body: unknown, duration: number | null): string | null {
     const hits: unknown = (body as { data?: unknown } | null)?.data;
     if (!Array.isArray(hits)) return null;
@@ -294,7 +266,7 @@ export function parseLine(line: string): YtDlpLine {
                     downloaded,
                     total,
                     speed,
-                    // yt-dlp reports no ETA for the HLS streams SoundCloud mostly serves, so work it out
+                    // no ETA from yt-dlp for SoundCloud's HLS streams: compute it
                     eta:
                         numberOrNull(raw.eta) ??
                         (downloaded !== null && total && speed ? Math.max(0, total - downloaded) / speed : null),
@@ -305,13 +277,13 @@ export function parseLine(line: string): YtDlpLine {
             };
         }
     } catch {
-        // a line that was cut short, or NaN in a field
+        // cut-short line, or NaN in field
     }
     return null;
 }
 
-// A packaged GUI app gets a bare PATH on macOS and Linux, so the usual install locations are added.
-// The same list is handed to yt-dlp as its PATH, so it can find ffmpeg, which it uses to stitch HLS streams.
+// packaged GUI apps get bare PATH on macOS/Linux: add usual install dirs
+// same list is yt-dlp's PATH, so it finds ffmpeg for HLS streams
 export function searchDirs(env: NodeJS.ProcessEnv = process.env): string[] {
     return [
         ...(env.PATH ?? '').split(delimiter),
@@ -323,16 +295,14 @@ export function searchDirs(env: NodeJS.ProcessEnv = process.env): string[] {
 
 const executable = (name: string) => (process.platform === 'win32' ? `${name}.exe` : name);
 
-/** `customPath` wins outright when set, so a typo there is reported instead of silently ignored. */
+/** `customPath` wins outright when set, so typos get reported instead of silently ignored */
 export function findYtDlp(customPath: string, dirs = searchDirs()): string | null {
     const candidates = customPath.trim() ? [customPath.trim()] : dirs.map((dir) => join(dir, executable('yt-dlp')));
     return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-/**
- * Whether yt-dlp can write covers and tags. Without ffmpeg it fails at that step on every track and
- * leaves each cover behind as a loose image, so the app only asks for them when ffmpeg is there.
- */
+/** whether yt-dlp can write covers and tags; without ffmpeg each track fails and leaves loose
+ * cover images, so tags are only asked for when ffmpeg is present */
 export function hasFfmpeg(dirs = searchDirs()): boolean {
     return dirs.some((dir) => existsSync(join(dir, executable('ffmpeg'))));
 }

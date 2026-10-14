@@ -6,13 +6,13 @@
 */
 
 .theme-dark {
-    /* === The page, the header and the menus === */
+    /* === page, header, menus === */
     --surface-color: #000000 !important;
     --surface-rgb: 0, 0, 0 !important;
     --background-surface-color: #000000 !important;
     --background-dark-color: #000000 !important;
     --button-dark-background-color: #000000 !important;
-    /* every state of a button has a colour of its own: one left out keeps SoundCloud's grey */
+    /* each button state needs its own colour: one missed keeps SoundCloud grey */
     --button-tertiary-background-color: #000000 !important;
     --button-tertiary-disabled-background-color: #000000 !important;
     --button-tertiary-selected-background-color: #000000 !important;
@@ -38,20 +38,19 @@
     --input-focused-background-color: #1a1a1a !important;
     --input-invalid-background-color: #1a1a1a !important;
 
-    /* === As in SoundCloud's dark mode; the title bar and the settings panel read their colours from here === */
+    /* === SoundCloud dark values; title bar and settings panel read these === */
     --primary-color: #ffffff !important;
     --secondary-color: #999999 !important;
     --button-special-background-color: #ff5500 !important;
 }
 
-/* the player bar is a raised surface by default; black with a hairline keeps it apart from the page */
+/* player bar is raised by default: black + hairline keeps it apart from page */
 .theme-dark .playControls__inner {
     background-color: #000000 !important;
     border-top: 1px solid #1a1a1a !important;
 }
 
-/* Its buttons are raised surfaces too, drawn in the bar's own colour so that they show as bare
-   icons. On a black bar that colour is black, or each one sits in a grey box. */
+/* bar buttons take bar colour (black), so icons show bare, not in grey boxes */
 .theme-dark .playControls {
     --highlight-color: #000000 !important;
     --highlight-rgb: 0, 0, 0 !important;

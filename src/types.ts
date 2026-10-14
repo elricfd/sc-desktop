@@ -1,84 +1,61 @@
-/**
- * Core type definitions for the SoundCloud RPC application
- */
+/** core types, SoundCloud RPC */
 
-/**
- * Information about the currently playing track
- */
+/** currently playing track */
 export interface TrackInfo {
-    /** Title of the track */
     title: string;
-    /** Author/artist of the track */
+    /** artist */
     author: string;
-    /** URL to the track's artwork image */
+    /** artwork image URL */
     artwork: string;
-    /** Elapsed playback time (format: "MM:SS" or "H:MM:SS") */
+    /** "MM:SS" or "H:MM:SS" */
     elapsed: string;
-    /** Total duration of the track (format: "MM:SS" or "H:MM:SS") */
+    /** "MM:SS" or "H:MM:SS" */
     duration: string;
-    /** Whether the track is currently playing */
     isPlaying: boolean;
-    /** Whether the track is liked by the user */
+    /** liked by user */
     isLiked: boolean;
-    /** SoundCloud URL of the track */
+    /** SoundCloud URL */
     url: string;
 }
 
-/**
- * Data required for Last.fm scrobbling
- */
+/** data for Last.fm scrobbling */
 export interface LastFmTrackData {
-    /** Title of the track */
     title: string;
-    /** Author/artist of the track */
+    /** artist */
     author: string;
-    /** Total duration of the track */
     duration: string;
-    /** Elapsed playback time (format: "MM:SS" or "H:MM:SS") */
+    /** "MM:SS" or "H:MM:SS" */
     elapsed: string;
 }
 
-/**
- * Data sent to webhooks
- */
+/** data sent to webhooks */
 export interface WebhookTrackData extends LastFmTrackData {
-    /** SoundCloud URL of the track */
+    /** SoundCloud URL */
     url: string;
-    /** URL to the track's artwork image */
+    /** artwork image URL */
     artwork: string;
 }
 
-/**
- * Parsed track information with artist and track name separated
- */
+/** parsed artist and track name */
 export interface ParsedTrackInfo {
-    /** Parsed artist name (null if not found) */
+    /** null if not found */
     artist: string | null;
-    /** Parsed track name */
     track: string;
 }
 
-/**
- * Normalized track information for display
- */
+/** normalized track info for display */
 export interface NormalizedTrackInfo {
-    /** Artist name (never null, defaults to "Unknown Artist") */
+    /** never null, default "Unknown Artist" */
     artist: string;
-    /** Track name (never null, defaults to "Unknown Track") */
+    /** never null, default "Unknown Track" */
     track: string;
 }
 
-/**
- * Update reason for track state changes
- */
+/** track state change reasons */
 export type TrackUpdateReason = 'playback-state-change' | 'track-change' | 'seek-change' | 'initial-state';
 
-/**
- * Message sent from renderer to main process for track updates
- */
+/** renderer to main, track updates */
 export interface TrackUpdateMessage {
-    /** Track information */
     data: TrackInfo;
-    /** Reason for the update */
     reason: TrackUpdateReason;
 }
