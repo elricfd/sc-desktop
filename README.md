@@ -116,8 +116,7 @@ don't need signing.
 
 ## Credits
 
-Based on [soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) by Richard Habitzreuter. The playback speed
-plugin is a port from [SoundCloud Desktop](https://github.com/zxcloli666/SoundCloud-Desktop).
+Based on [soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) by Richard Habitzreuter.
 
 ## License
 

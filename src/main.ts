@@ -42,7 +42,7 @@ import { installStoreReadCache } from './utils/storeCache';
 import { deriveBrowserUserAgent } from './utils/userAgent';
 import { ejectDmg, findInstallerDmg } from './utils/installerDmg';
 import { DEFAULT_FOLDER, DEFAULT_TEMPLATE } from './utils/ytdlp';
-import { readSuggestions, suggestScript } from './utils/searchSuggest';
+import { personalSearchScript, readSuggestions, suggestScript } from './utils/searchSuggest';
 import { presentAsChrome } from './utils/chromeIdentity';
 import {
     EMPTY_PAGE_INFO,
@@ -166,7 +166,7 @@ function disableChromiumFeatures(): void {
 disableChromiumFeatures();
 
 // static music UI: software compositing saves ~140MB GPU-process memory, idle CPU unchanged
-// ponytail: Retina software raster costs CPU, so macOS keeps the GPU; add a setting if Windows users report stutter
+// Retina software raster costs CPU, so macOS keeps the GPU; add a setting if Windows users report stutter
 if (!isMac) app.disableHardwareAcceleration();
 
 // privileged schemes: declare before app ready
@@ -599,7 +599,7 @@ function setupWindowControls() {
         'navigate-url',
         trustedOn((_event, input: unknown) => navigateActiveTab(input), 'navigate-url'),
     );
-    // SoundCloud's own search suggestions, asked from page in front
+    // account's own matching follows and likes, asked from page in front
     ipcMain.handle(
         'search-suggest',
         trustedHandle(async (_event, query: unknown) => {
@@ -905,6 +905,7 @@ function wireTab(tab: Tab): void {
             if (!isSoundCloudUrl(webContents.getURL())) return;
 
             await webContents.executeJavaScript(audioMonitorScript);
+            await webContents.executeJavaScript(personalSearchScript);
             pluginService?.injectAllContentScripts(tab.view);
             await presenceService?.updatePresence(lastTrackInfo);
         } catch (error) {

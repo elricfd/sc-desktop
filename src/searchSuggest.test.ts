@@ -1,90 +1,187 @@
 import { describe, expect, it } from 'vitest';
-import { readSuggestions, suggestScript } from './utils/searchSuggest';
+import { personalSearchScript, readSuggestions, suggestScript } from './utils/searchSuggest';
 
 interface Page {
     hydration?: unknown[];
     resources?: string[];
     cookie?: string;
     /** API answer, keyed by path */
-    api?: Record<string, unknown[]>;
+    api?: Record<string, unknown>;
 }
 
-// run script as page would, page globals stubbed
-function run(query: string, page: Page, window: Record<string, unknown> = {}) {
+// XHR answering `FakeXHR.answer` once sent
+class FakeXHR {
+    static answer = '';
+    readyState = 1;
+    status = 0;
+    responseType = '';
+    onload?: () => void;
+    open(...request: [string, string]) {
+        return request;
+    }
+    abort() {}
+    send() {
+        this.readyState = 4;
+        this.status = 200;
+        this.onload?.();
+    }
+    get responseText() {
+        return FakeXHR.answer;
+    }
+    get response() {
+        return FakeXHR.answer;
+    }
+}
+
+// page globals stubbed, shared by scripts run on same page
+function page({ hydration, resources = [], cookie = '', api = {} }: Page) {
     const asked: { url: URL; authorization?: string }[] = [];
-    window.__sc_hydration = page.hydration;
-    const document = { cookie: page.cookie ?? '' };
-    const performance = { getEntriesByType: () => (page.resources ?? []).map((name) => ({ name })) };
-    const fetch = async (address: string, init: { headers: { Authorization?: string } }) => {
+    const fetch = async (address: string, init?: { headers?: { Authorization?: string } }) => {
         const url = new URL(address);
-        asked.push({ url, authorization: init.headers.Authorization });
-        return { json: async () => ({ collection: page.api?.[url.pathname] ?? [] }) };
+        asked.push({ url, authorization: init?.headers?.Authorization });
+        return new Response(JSON.stringify(api[url.pathname] ?? {}));
     };
-    const result = new Function('window', 'document', 'performance', 'fetch', `return ${suggestScript(query)}`)(
+    const window: Record<string, unknown> = { __sc_hydration: hydration, fetch };
+    const globals = {
         window,
-        document,
-        performance,
-        fetch,
-    ) as Promise<unknown>;
-    return result.then((value) => ({ value, asked }));
+        document: { cookie },
+        performance: { getEntriesByType: () => resources.map((name) => ({ name })) },
+        location: { href: 'https://soundcloud.com/search?q=hi' },
+        XMLHttpRequest: FakeXHR,
+    };
+    const run = (script: string) =>
+        new Function(...Object.keys(globals), `return ${script}`)(...Object.values(globals)) as unknown;
+    const search = (address: string) => (window.fetch as typeof fetch)(address).then((answer) => answer.json());
+    return { window, asked, run, search, suggest: (query: string) => run(suggestScript(query)) as Promise<unknown> };
 }
 
 const hydration = [{ hydratable: 'user' }, { hydratable: 'apiClient', data: { id: 'abc' } }];
-const queries = { '/search/queries': [{ output: 'flume' }, { output: 'flume remix' }] };
+const flume = {
+    kind: 'user',
+    id: 1,
+    username: 'Flume',
+    permalink_url: 'https://soundcloud.com/flume',
+    avatar_url: 'a',
+};
+const track = (id: number, title: string, user_id = 9, genre = '') => ({
+    kind: 'track',
+    id,
+    title,
+    user_id,
+    genre,
+    permalink_url: `https://soundcloud.com/x/${id}`,
+});
+const library = {
+    '/me': { id: 7 },
+    '/users/7/track_likes': {
+        collection: [
+            { track: track(10, 'Hi There', 1, 'House') },
+            { track: track(11, 'Say Hi', 2) },
+            { track: track(12, 'Other') },
+        ],
+    },
+    '/users/7/followings': { collection: [flume, { kind: 'user', id: 3, username: 'Hiatus' }] },
+};
+const signedIn = { hydration, cookie: 'a=1; oauth_token=2-tok; b=2', api: library };
 
 describe('suggestScript', () => {
-    it('asks SoundCloud as the page, with the client id the page was given', async () => {
-        const { value, asked } = await run('flum', { hydration, api: queries });
-        expect(value).toEqual([{ title: 'flume' }, { title: 'flume remix' }]);
-        // signed out: searches only, no session sent
-        expect(asked.map(({ url }) => url.href)).toEqual([
-            'https://api-v2.soundcloud.com/search/queries?q=flum&client_id=abc&limit=10',
+    it('lists only the account’s own matching follows and likes, library asked once per page with its session', async () => {
+        const tab = page(signedIn);
+        expect(await tab.suggest('hi')).toEqual([
+            { title: 'Hiatus', url: undefined, image: undefined, round: true },
+            { title: 'Hi There', url: 'https://soundcloud.com/x/10', image: undefined, round: false },
+            { title: 'Say Hi', url: 'https://soundcloud.com/x/11', image: undefined, round: false },
         ]);
-        expect(asked[0].authorization).toBeUndefined();
+        expect(tab.asked.map(({ url }) => url.pathname)).toEqual([
+            '/me',
+            '/users/7/track_likes',
+            '/users/7/followings',
+        ]);
+        expect(
+            tab.asked.every(
+                ({ url, authorization }) =>
+                    authorization === 'OAuth 2-tok' && url.searchParams.get('client_id') === 'abc',
+            ),
+        ).toBe(true);
+
+        expect(await tab.suggest('flu')).toMatchObject([{ title: 'Flume', round: true }]);
+        expect(tab.asked).toHaveLength(3);
     });
 
-    it('puts the account’s own that match first, asked for once per page with its session', async () => {
-        const flume = {
-            kind: 'user',
-            username: 'Flume',
-            permalink_url: 'https://soundcloud.com/flume',
-            avatar_url: 'a',
-        };
-        const track = { kind: 'track', title: 'Reflume', permalink_url: 'https://soundcloud.com/x/reflume' };
-        const api = {
-            ...queries,
-            '/me/shortcuts/followings': [flume, { kind: 'user', username: 'Other', permalink_url: 'o' }],
-            '/me/shortcuts/track-likes': [track],
-            // liked too: listed once
-            '/me/shortcuts/own-tracks': [track],
-        };
-        const window = {};
-        const page = { hydration, cookie: 'a=1; oauth_token=2-tok; b=2', api };
-        const first = await run('flum', page, window);
-        expect(first.value).toEqual([
-            { title: 'Flume', url: 'https://soundcloud.com/flume', image: 'a', round: true },
-            { title: 'Reflume', url: 'https://soundcloud.com/x/reflume', image: undefined, round: false },
-            { title: 'flume' },
-            { title: 'flume remix' },
-        ]);
-        expect(first.asked).toHaveLength(4);
-        expect(first.asked.every(({ authorization }) => authorization === 'OAuth 2-tok')).toBe(true);
+    it('asks nothing signed out, and falls back to the client id a page request carried', async () => {
+        const signedOut = page({ hydration });
+        expect(await signedOut.suggest('hi')).toEqual([]);
+        expect(signedOut.asked).toEqual([]);
 
-        const second = await run('oth', page, window);
-        expect(second.asked.map(({ url }) => url.pathname)).toEqual(['/search/queries']);
-        expect(second.value).toMatchObject([{ title: 'Other' }, { title: 'flume' }, { title: 'flume remix' }]);
-    });
-
-    it('falls back to the client id of a request the page has made, and asks nothing without one', async () => {
         const resources = ['https://a-v2.sndcdn.com/app.js', 'https://api-v2.soundcloud.com/me?client_id=xyz'];
-        expect((await run('a', { resources })).asked[0].url.searchParams.get('client_id')).toBe('xyz');
-        expect(await run('a', {})).toEqual({ value: [], asked: [] });
+        const fallback = page({ ...signedIn, hydration: undefined, resources });
+        await fallback.suggest('hi');
+        expect(fallback.asked[0].url.searchParams.get('client_id')).toBe('xyz');
     });
 
-    it('carries the query as text, whatever is in it', async () => {
+    it('matches the query as text, whatever is in it', async () => {
         const query = `"); alert(1); (" \${x} \` </script> \\`;
-        const { asked } = await run(query, { hydration });
-        expect(asked[0].url.searchParams.get('q')).toBe(query);
+        expect(await page(signedIn).suggest(query)).toEqual([]);
+    });
+});
+
+describe('personalSearchScript', () => {
+    // SoundCloud's order: stranger, followed artist, liked track, stranger in liked genre, followed user
+    const results = {
+        collection: [
+            track(20, 'hi stranger', 50),
+            track(21, 'hi flume', 1),
+            track(11, 'Say Hi', 2),
+            track(22, 'hi house', 51, 'house'),
+            { kind: 'user', id: 3 },
+        ],
+        next_href: 'n',
+    };
+    const ids = (body: { collection: { id: number }[] }) => body.collection.map((item) => item.id);
+    // 10 liked match put first, 11 liked, 21 by followed and liked artist, 3 followed, 22 liked genre
+    const personal = [10, 11, 21, 3, 22, 20];
+
+    it('leads the first page with liked matches, then liked tracks, liked or followed artists and liked genres', async () => {
+        const tab = page({ ...signedIn, api: { ...library, '/search/tracks': results } });
+        tab.run(personalSearchScript);
+        const first = await tab.search('https://api-v2.soundcloud.com/search/tracks?q=Hi&limit=20');
+        expect(ids(first)).toEqual(personal);
+        expect(first.next_href).toBe('n');
+
+        // later page: liked matches already shown stay off
+        expect(ids(await tab.search('https://api-v2.soundcloud.com/search/tracks?q=Hi&offset=20'))).toEqual([
+            21, 3, 22, 20,
+        ]);
+        // other answers untouched
+        expect(await tab.search('https://api-v2.soundcloud.com/search/users?q=Hi')).toEqual({});
+    });
+
+    it('reorders XHR search answers too, sent once the library is in', async () => {
+        const tab = page(signedIn);
+        tab.run(personalSearchScript);
+        FakeXHR.answer = JSON.stringify(results);
+        const xhr = new FakeXHR();
+        const loaded = new Promise<void>((done) => (xhr.onload = done));
+        xhr.open('GET', 'https://api-v2.soundcloud.com/search?q=hi');
+        xhr.send();
+        expect(xhr.readyState).toBe(1);
+        await loaded;
+        expect(ids(JSON.parse(xhr.responseText))).toEqual(personal);
+        expect(xhr.response).toBe(xhr.responseText);
+
+        // aborted while waiting: never sent
+        const stale = new FakeXHR();
+        stale.open('GET', 'https://api-v2.soundcloud.com/search?q=hi');
+        stale.send();
+        stale.abort();
+        await new Promise((done) => setTimeout(done, 10));
+        expect(stale.readyState).toBe(1);
+    });
+
+    it('leaves search alone signed out', async () => {
+        const tab = page({ hydration, api: { '/search/tracks': results } });
+        tab.run(personalSearchScript);
+        expect(ids(await tab.search('https://api-v2.soundcloud.com/search/tracks?q=hi'))).toEqual([20, 21, 11, 22, 3]);
     });
 });
 

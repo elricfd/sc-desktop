@@ -355,7 +355,7 @@ function search(query) {
     searchInput.blur();
 }
 
-// typed text first, then main's matches: own follows, likes, uploads (places) and search suggestions
+// typed text first, then main's matches: own follows and likes (places)
 function showSuggestions(typed, items) {
     const rows = items.length ? [{ title: typed }, ...items.filter((item) => item.url || item.title !== typed)] : [];
     suggestions.replaceChildren(
