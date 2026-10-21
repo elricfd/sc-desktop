@@ -185,6 +185,8 @@ let displayWhenIdling = store.get('displayWhenIdling') as boolean;
 let displaySCSmallIcon = store.get('displaySCSmallIcon') as boolean;
 
 let updaterStarted = false;
+let updateTimer: NodeJS.Timeout | undefined;
+const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 
 function setupUpdater() {
     if (!store.get('autoUpdaterEnabled', true)) {
@@ -213,17 +215,47 @@ function setupUpdater() {
             queueToastNotification('Update Available');
             if (!ownInstall) return;
             stageMacUpdate(info.version, info.files)
-                .then((staged) => staged && queueToastNotification('Update Completed'))
+                .then((staged) => {
+                    if (!staged) return;
+                    clearInterval(updateTimer);
+                    queueToastNotification('Update Completed');
+                })
                 .catch((error) => console.error('Failed to fetch the update:', error));
         });
 
-        autoUpdater.on('update-downloaded', () => {
-            queueToastNotification('Update Completed');
+        autoUpdater.on('update-downloaded', (info: { version?: unknown }) => {
+            clearInterval(updateTimer);
+            void offerUpdateRestart(String(info.version));
         });
+
+        // long sessions: ask again until update waits
+        updateTimer = setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL);
     }
 
-    // offline or release not yet published: next start asks again
+    checkForUpdates();
+}
+
+function checkForUpdates() {
+    if (!store.get('autoUpdaterEnabled', true)) return;
+    // offline or release not yet published: next check asks again
     autoUpdater.checkForUpdates().catch((error: unknown) => console.error('Failed to check for updates:', error));
+}
+
+// "Later": installs on quit anyway
+async function offerUpdateRestart(version: string) {
+    const options = {
+        type: 'info' as const,
+        message: translationService.translate('updateReadyTitle'),
+        detail: translationService.translate('updateReadyDetail').replace('{version}', version),
+        buttons: [translationService.translate('updateRestart'), translationService.translate('updateLater')],
+        defaultId: 0,
+        cancelId: 1,
+    };
+    // hidden in tray: parentless, or dialog stays hidden too
+    const { response } = mainWindow?.isVisible()
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options);
+    if (response === 0) autoUpdater.quitAndInstall(true, true);
 }
 
 // after drag-install: dmg stays mounted, installer sits in Downloads; offer to tidy both
