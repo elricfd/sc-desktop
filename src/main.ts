@@ -165,6 +165,10 @@ function disableChromiumFeatures(): void {
 
 disableChromiumFeatures();
 
+// static music UI: software compositing saves ~140MB GPU-process memory, idle CPU unchanged
+// ponytail: Retina software raster costs CPU, so macOS keeps the GPU; add a setting if Windows users report stutter
+if (!isMac) app.disableHardwareAcceleration();
+
 // privileged schemes: declare before app ready
 registerAppScheme();
 const HEADER_HEIGHT = 32;
