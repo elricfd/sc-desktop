@@ -146,8 +146,8 @@ if (!store.get('macNavControlsDefaulted', false)) {
 // real engine UA minus Electron tokens; see utils/userAgent.ts
 app.userAgentFallback = deriveBrowserUserAgent(app.userAgentFallback, app.getName());
 
-function applyMacMemoryOptimizations(): void {
-    if (!isMac) return;
+function disableChromiumFeatures(): void {
+    if (!isMac && process.platform !== 'win32') return;
 
     const existingDisableFeatures = app.commandLine.getSwitchValue('disable-features');
     const features = new Set(
@@ -156,12 +156,14 @@ function applyMacMemoryOptimizations(): void {
             .map((feature) => feature.trim())
             .filter(Boolean),
     );
-    features.add('BackForwardCache');
+    if (isMac) features.add('BackForwardCache');
+    // display sleep or cover hides views; after DisplayPort monitor drops off they can stay hidden, window frozen
+    else features.add('CalculateNativeWinOcclusion');
 
     app.commandLine.appendSwitch('disable-features', Array.from(features).join(','));
 }
 
-applyMacMemoryOptimizations();
+disableChromiumFeatures();
 
 // privileged schemes: declare before app ready
 registerAppScheme();
