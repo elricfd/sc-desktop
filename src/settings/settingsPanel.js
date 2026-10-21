@@ -199,8 +199,15 @@ const CHECKBOX_SETTINGS = [
     'hidePromotions', 'hideEventsNearYou', 'hideArtistUpsells', 'downloadsButtonAlways',
     'downloadUseAccount', 'minimizeToTray', 'navigationControlsEnabled', 'trackParserEnabled',
     'autoUpdaterEnabled', 'displayWhenIdling', 'displaySCSmallIcon', 'adBlocker',
-    'discordRichPresence', 'displayButtons', 'downloadDrmFallback',
+    'discordRichPresence', 'displayButtons', 'downloadDrmFallback', 'proxyEnabled',
+    'lastFmEnabled', 'webhookEnabled', 'richPresencePreviewEnabled',
 ];
+// take effect only on Apply (main's 'apply-changes'); button appears once one changes
+// prettier-ignore
+const APPLY_SETTINGS = new Set([
+    'adBlocker', 'discordRichPresence', 'proxyEnabled', 'proxyHost', 'proxyPort',
+    'lastFmEnabled', 'lastFmApiKey', 'lastFmSecret',
+]);
 const TEXT_SETTINGS = [
     'downloadTemplate',
     'downloadPlaylistFolder',
@@ -225,6 +232,32 @@ for (const key of TEXT_SETTINGS) {
     });
 }
 
+document.addEventListener('change', (e) => {
+    const { id, checked } = e.target;
+    document.querySelectorAll(`[data-shown-by="${id}"]`).forEach((el) => (el.hidden = !checked));
+    if (APPLY_SETTINGS.has(id)) document.querySelector('footer').hidden = false;
+});
+
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+function selectTab(tab) {
+    for (const t of tabs) {
+        t.setAttribute('aria-selected', String(t === tab));
+        document.getElementById(t.getAttribute('aria-controls')).hidden = t !== tab;
+    }
+    document.querySelector('main').scrollTop = 0;
+}
+tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => selectTab(tab));
+    // arrow keys move between tabs
+    tab.addEventListener('keydown', (e) => {
+        const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+        if (!step) return;
+        const next = tabs[(i + step + tabs.length) % tabs.length];
+        selectTab(next);
+        next.focus();
+    });
+});
+
 // downloads list drawn by downloadsPanel.js (copied beside this, loaded after); its API
 window.downloadsAPI = {
     send: ipcRenderer.send,
@@ -241,28 +274,9 @@ document.getElementById('openDownloadFolder')?.addEventListener('click', () => {
     ipcRenderer.send('downloads-open-folder');
 });
 
-document.getElementById('proxyEnabled')?.addEventListener('change', (e) => {
-    const isEnabled = e.target.checked;
-    document.getElementById('proxyFields').style.display = isEnabled ? 'block' : 'none';
-    ipcRenderer.send('setting-changed', { key: 'proxyEnabled', value: isEnabled });
-});
-
-document.getElementById('lastFmEnabled')?.addEventListener('change', (e) => {
-    const isEnabled = e.target.checked;
-    document.getElementById('lastFmFields').style.display = isEnabled ? 'block' : 'none';
-    ipcRenderer.send('setting-changed', { key: 'lastFmEnabled', value: isEnabled });
-});
-
 document.getElementById('createLastFmApiKey')?.addEventListener('click', (e) => {
     e.preventDefault();
     shell.openExternal('https://www.last.fm/api/account/create');
-});
-
-document.getElementById('webhookEnabled')?.addEventListener('change', (e) => {
-    const isEnabled = e.target.checked;
-    document.getElementById('webhookFields').style.display = isEnabled ? 'block' : 'none';
-    document.getElementById('webhookFields2').style.display = isEnabled ? 'block' : 'none';
-    ipcRenderer.send('setting-changed', { key: 'webhookEnabled', value: isEnabled });
 });
 
 document.getElementById('webhookTriggerPercentage')?.addEventListener('input', (e) => {
@@ -282,15 +296,6 @@ document.getElementById('darkMode')?.addEventListener('change', (e) => {
     document.documentElement.classList.toggle('theme-dark', isDark);
 });
 
-document.getElementById('richPresencePreviewEnabled')?.addEventListener('change', (e) => {
-    const isEnabled = e.target.checked;
-    const container = document.getElementById('presencePreviewContainer');
-    if (container) {
-        container.style.display = isEnabled ? 'block' : 'none';
-    }
-    ipcRenderer.send('setting-changed', { key: 'richPresencePreviewEnabled', value: isEnabled });
-});
-
 document.getElementById('useArtistInStatusLineToggle')?.addEventListener('change', (e) => {
     const useState = e.target.checked;
     ipcRenderer.send('setting-changed', { key: 'statusDisplayType', value: useState ? 1 : 0 });
@@ -298,6 +303,7 @@ document.getElementById('useArtistInStatusLineToggle')?.addEventListener('change
 
 document.getElementById('applyChanges')?.addEventListener('click', () => {
     ipcRenderer.send('apply-changes');
+    document.querySelector('footer').hidden = true;
 });
 
 // rich presence preview

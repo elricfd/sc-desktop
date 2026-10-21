@@ -6,6 +6,7 @@ const list = document.getElementById('list');
 const empty = document.getElementById('empty');
 const drm = document.getElementById('drm');
 const drmList = document.getElementById('drm-list');
+const clear = document.getElementById('clear');
 const rows = new Map();
 
 function formatBytes(bytes) {
@@ -115,6 +116,7 @@ function render(items) {
     });
 
     empty.hidden = items.length > 0;
+    clear.hidden = !items.length;
 
     const names = [...new Set(items.flatMap((item) => item.drm))].join('\n');
     drm.hidden = !names;
@@ -129,7 +131,7 @@ list.addEventListener('click', (e) => {
 });
 
 document.getElementById('open-folder')?.addEventListener('click', () => api.send('downloads-open-folder'));
-document.getElementById('clear').addEventListener('click', () => api.send('downloads-clear'));
+clear.addEventListener('click', () => api.send('downloads-clear'));
 document.getElementById('close')?.addEventListener('click', () => api.send('toggle-downloads'));
 
 api.onChanged(render);

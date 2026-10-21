@@ -111,7 +111,11 @@ export class SettingsManager {
         const text = (key: TranslationKeys, tag = 'span', className = '') =>
             `<${tag}${className ? ` class="${className}"` : ''} data-i18n="${key}">${t(key)}</${tag}>`;
         const hint = (key: TranslationKeys) => text(key, 'p', 'hint');
-        const section = (key: TranslationKeys, body: string) => `<section>${text(key, 'h2')}${body}</section>`;
+        const section = (key: TranslationKeys | null, body: string) =>
+            `<section>${key ? text(key, 'h2') : ''}${body}</section>`;
+        // one panel per tab, only active one shown; settingsPanel.js switches
+        const tabs: [TranslationKeys, string][] = [];
+        const tab = (key: TranslationKeys, body: string) => tabs.push([key, body]);
         const toggle = (id: string, key: TranslationKeys, checked: unknown) => `
             <label class="row">
                 ${text(key)}
@@ -125,69 +129,21 @@ export class SettingsManager {
                 data-i18n-placeholder="${key}" value="${escapeHtml(value)}">`;
         const button = (id: string, key: TranslationKeys) =>
             `<button type="button" class="btn" id="${id}" data-i18n="${key}">${t(key)}</button>`;
-        const shownIf = (on: unknown) => `style="display: ${on ? 'block' : 'none'}"`;
+        // subfields shown only while toggle `id` is on; settingsPanel.js keeps it in sync
+        const shownBy = (id: string, on: unknown) => `data-shown-by="${id}" ${on ? '' : 'hidden'}`;
 
-        const general = `
+        tab(
+            'general',
+            section(
+                null,
+                `
             ${toggle('minimizeToTray', 'minimizeToTray', store.get('minimizeToTray', true))}
             ${toggle('navigationControlsEnabled', 'enableNavigationControls', store.get('navigationControlsEnabled', false))}
-            ${toggle('autoUpdaterEnabled', 'enableAutoUpdater', store.get('autoUpdaterEnabled', true))}
-            ${toggle('trackParserEnabled', 'enableTrackParser', store.get('trackParserEnabled', true))}
-            ${hint('trackParserDescription')}`;
-
-        const appearance = `
-            ${toggle('darkMode', 'darkMode', store.get('theme', 'dark') !== 'light')}
-            ${toggle('hidePromotions', 'hidePromotions', store.get('hidePromotions', true))}
-            ${toggle('hideEventsNearYou', 'hideEventsNearYou', store.get('hideEventsNearYou', true))}
-            ${toggle('hideArtistUpsells', 'hideArtistUpsells', store.get('hideArtistUpsells', true))}
-            <div class="row">
-                ${text('selectCustomTheme')}
-                <select id="customThemeSelector">
-                    <option value="none" data-i18n="noTheme">${t('noTheme')}</option>
-                </select>
-            </div>
-            <div class="buttons">
-                ${button('openThemesFolder', 'openThemesFolder')}
-                ${button('refreshThemes', 'refreshThemes')}
-            </div>
-            ${hint('customThemeDescription')}`;
-
-        const downloads = `
-            <p class="hint" id="empty" data-i18n="noDownloads">${t('noDownloads')}</p>
-            <div id="list"></div>
-            <details id="drm" hidden>
-                <summary></summary>
-                <div id="drm-list"></div>
-            </details>
-            <div class="buttons">${button('clear', 'clearDownloads')}</div>
-            ${toggle('downloadsButtonAlways', 'showDownloadButton', store.get('downloadsButtonAlways', false))}
-            ${toggle('downloadUseAccount', 'downloadUseAccount', store.get('downloadUseAccount', true))}
-            <label class="field">
-                ${text('downloadTemplate')}
-                <input type="text" class="textInput" id="downloadTemplate" spellcheck="false" value="${escapeHtml(
-                    store.get('downloadTemplate', DEFAULT_TEMPLATE),
-                )}">
-            </label>
-            <label class="field">
-                ${text('downloadPlaylistFolder')}
-                <input type="text" class="textInput" id="downloadPlaylistFolder" spellcheck="false" value="${escapeHtml(
-                    store.get('downloadPlaylistFolder', DEFAULT_FOLDER),
-                )}">
-            </label>
-            <div class="row">
-                ${text('downloadFolder')}
-                <div class="buttons">
-                    ${button('chooseDownloadFolder', 'chooseFolder')}
-                    ${button('openDownloadFolder', 'openFolder')}
-                </div>
-            </div>
-            <p class="hint path" id="downloadFolderPath">${escapeHtml(downloadFolder(store))}</p>
-            <div class="field">${input('ytDlpPath', 'ytDlpPath', store.get('ytDlpPath', ''))}</div>
-            ${hint('downloadsDescription')}
-            ${toggle('downloadDrmFallback', 'downloadDrmFallback', store.get('downloadDrmFallback', true))}
-            <div class="field">${input('deemixPath', 'deemixPath', store.get('deemixPath', ''))}</div>
-            ${hint('downloadDrmFallbackDescription')}`;
-
-        const accounts = `
+            ${toggle('autoUpdaterEnabled', 'enableAutoUpdater', store.get('autoUpdaterEnabled', true))}`,
+            ) +
+                section(
+                    'accounts',
+                    `
             <div class="row">
                 <span>Switch account</span>
                 <div class="buttons">
@@ -198,38 +154,125 @@ export class SettingsManager {
             <div class="buttons">
                 <button type="button" class="btn danger" id="logoutBtn">Log out of current account</button>
             </div>
-            <p class="hint">The app restarts to load the other session.</p>`;
+            <p class="hint">The app restarts to load the other session.</p>`,
+                ),
+        );
 
-        const discord = `
+        tab(
+            'appearance',
+            section(
+                null,
+                `
+            ${toggle('darkMode', 'darkMode', store.get('theme', 'dark') !== 'light')}
+            <div class="row">
+                ${text('selectCustomTheme')}
+                <select id="customThemeSelector">
+                    <option value="none" data-i18n="noTheme">${t('noTheme')}</option>
+                </select>
+            </div>
+            <div class="buttons">
+                ${button('openThemesFolder', 'openThemesFolder')}
+                ${button('refreshThemes', 'refreshThemes')}
+            </div>
+            ${hint('customThemeDescription')}`,
+            ) +
+                section(
+                    'hideOnSoundCloud',
+                    `
+            ${toggle('hidePromotions', 'hidePromotions', store.get('hidePromotions', true))}
+            ${toggle('hideEventsNearYou', 'hideEventsNearYou', store.get('hideEventsNearYou', true))}
+            ${toggle('hideArtistUpsells', 'hideArtistUpsells', store.get('hideArtistUpsells', true))}`,
+                ),
+        );
+
+        tab(
+            'downloads',
+            section(
+                null,
+                `
+            <p class="hint" id="empty" data-i18n="noDownloads">${t('noDownloads')}</p>
+            <div id="list"></div>
+            <details id="drm" hidden>
+                <summary></summary>
+                <div id="drm-list"></div>
+            </details>
+            <div class="buttons">${button('clear', 'clearDownloads')}</div>`,
+            ) +
+                section(
+                    'options',
+                    `
+            <div class="row">
+                ${text('downloadFolder')}
+                <div class="buttons">
+                    ${button('chooseDownloadFolder', 'chooseFolder')}
+                    ${button('openDownloadFolder', 'openFolder')}
+                </div>
+            </div>
+            <p class="hint path" id="downloadFolderPath">${escapeHtml(downloadFolder(store))}</p>
+            ${toggle('downloadUseAccount', 'downloadUseAccount', store.get('downloadUseAccount', true))}
+            ${toggle('downloadsButtonAlways', 'showDownloadButton', store.get('downloadsButtonAlways', false))}
+            ${toggle('downloadDrmFallback', 'downloadDrmFallback', store.get('downloadDrmFallback', true))}
+            ${hint('downloadDrmFallbackDescription')}
+            <details class="advanced">
+                ${text('advanced', 'summary')}
+                <label class="field">
+                    ${text('downloadTemplate')}
+                    <input type="text" class="textInput" id="downloadTemplate" spellcheck="false" value="${escapeHtml(
+                        store.get('downloadTemplate', DEFAULT_TEMPLATE),
+                    )}">
+                </label>
+                <label class="field">
+                    ${text('downloadPlaylistFolder')}
+                    <input type="text" class="textInput" id="downloadPlaylistFolder" spellcheck="false" value="${escapeHtml(
+                        store.get('downloadPlaylistFolder', DEFAULT_FOLDER),
+                    )}">
+                </label>
+                <div class="field">${input('ytDlpPath', 'ytDlpPath', store.get('ytDlpPath', ''))}</div>
+                <div class="field">${input('deemixPath', 'deemixPath', store.get('deemixPath', ''))}</div>
+                ${hint('downloadsDescription')}
+            </details>`,
+                ),
+        );
+
+        tab(
+            'integrations',
+            section(
+                'discord',
+                `
             ${toggle('discordRichPresence', 'enableRichPresence', store.get('discordRichPresence'))}
-            ${toggle('displayWhenIdling', 'displayWhenPaused', store.get('displayWhenIdling'))}
-            ${toggle('displaySCSmallIcon', 'displaySmallIcon', store.get('displaySCSmallIcon'))}
-            ${toggle('displayButtons', 'displayButtons', store.get('displayButtons'))}
-            ${toggle('useArtistInStatusLineToggle', 'useArtistInStatusLine', store.get('statusDisplayType') === 1)}
-            ${toggle('richPresencePreviewEnabled', 'enableRichPresencePreview', store.get('richPresencePreviewEnabled', false))}
-            ${hint('richPresencePreviewDescription')}
-            <div class="discord-preview" id="presencePreviewContainer" ${shownIf(store.get('richPresencePreviewEnabled', false))}>
-                <div id="activitySectionPreview">
-                    <div class="no-activity-preview" id="noActivityPreview" data-i18n="noActivityToShow">
-                        ${t('noActivityToShow')}
+            <div class="subfields" ${shownBy('discordRichPresence', store.get('discordRichPresence'))}>
+                ${toggle('displayWhenIdling', 'displayWhenPaused', store.get('displayWhenIdling'))}
+                ${toggle('displaySCSmallIcon', 'displaySmallIcon', store.get('displaySCSmallIcon'))}
+                ${toggle('displayButtons', 'displayButtons', store.get('displayButtons'))}
+                ${toggle('useArtistInStatusLineToggle', 'useArtistInStatusLine', store.get('statusDisplayType') === 1)}
+                ${toggle('richPresencePreviewEnabled', 'enableRichPresencePreview', store.get('richPresencePreviewEnabled', false))}
+                <div class="discord-preview" ${shownBy('richPresencePreviewEnabled', store.get('richPresencePreviewEnabled', false))}>
+                    <div id="activitySectionPreview">
+                        <div class="no-activity-preview" id="noActivityPreview" data-i18n="noActivityToShow">
+                            ${t('noActivityToShow')}
+                        </div>
                     </div>
                 </div>
-            </div>`;
-
-        const lastFm = `
+            </div>`,
+            ) +
+                section(
+                    'lastfm',
+                    `
             ${toggle('lastFmEnabled', 'enableLastFm', store.get('lastFmEnabled'))}
-            <div class="subfields" id="lastFmFields" ${shownIf(store.get('lastFmEnabled'))}>
+            <div class="subfields" ${shownBy('lastFmEnabled', store.get('lastFmEnabled'))}>
                 ${input('lastFmApiKey', 'lastFmApiKey', readSecret(store, 'lastFmApiKey', ''))}
                 ${input('lastFmSecret', 'lastFmApiSecret', readSecret(store, 'lastFmSecret', ''), 'password')}
-            </div>
-            <p class="hint">
-                <a href="#" id="createLastFmApiKey" class="link" data-i18n="createApiKeyLastFm">${t('createApiKeyLastFm')}</a>
-                - ${text('noCallbackUrl')}
-            </p>`;
-
-        const webhooks = `
+                <p class="hint">
+                    <a href="#" id="createLastFmApiKey" class="link" data-i18n="createApiKeyLastFm">${t('createApiKeyLastFm')}</a>
+                    - ${text('noCallbackUrl')}
+                </p>
+            </div>`,
+                ) +
+                section(
+                    'webhooks',
+                    `
             ${toggle('webhookEnabled', 'enableWebhooks', store.get('webhookEnabled'))}
-            <div class="subfields" id="webhookFields" ${shownIf(store.get('webhookEnabled'))}>
+            <div class="subfields" ${shownBy('webhookEnabled', store.get('webhookEnabled'))}>
                 ${input('webhookUrl', 'webhookUrl', store.get('webhookUrl') || '', 'url')}
                 <label class="row">
                     ${text('webhookTrigger')}
@@ -239,11 +282,10 @@ export class SettingsManager {
                         %
                     </span>
                 </label>
-            </div>
-            ${hint('webhookDescription')}
-            <details id="webhookFields2" ${shownIf(store.get('webhookEnabled'))}>
-                ${text('showWebhookExample', 'summary')}
-                <pre>{
+                ${hint('webhookDescription')}
+                <details>
+                    ${text('showWebhookExample', 'summary')}
+                    <pre>{
   "timestamp": "2025-08-12T14:30:45.123Z",
   "artist": "Artist Name",
   "track": "Track Title",
@@ -251,18 +293,33 @@ export class SettingsManager {
   "trackArt": "https://example.com/artwork.jpg",
   "originUrl": "https://soundcloud.com/track-url"
 }</pre>
-            </details>`;
+                </details>
+            </div>`,
+                ),
+        );
 
-        const network = `
+        tab(
+            'advanced',
+            section(
+                null,
+                `
+            ${toggle('trackParserEnabled', 'enableTrackParser', store.get('trackParserEnabled', true))}
+            ${hint('trackParserDescription')}`,
+            ) +
+                section(
+                    'network',
+                    `
             ${toggle('adBlocker', 'enableAdBlocker', store.get('adBlocker'))}
             ${hint('changesAppRestart')}
             ${toggle('proxyEnabled', 'enableProxy', store.get('proxyEnabled'))}
-            <div class="subfields" id="proxyFields" ${shownIf(store.get('proxyEnabled'))}>
+            <div class="subfields" ${shownBy('proxyEnabled', store.get('proxyEnabled'))}>
                 ${input('proxyHost', 'proxyHost', store.get('proxyHost') || '')}
                 ${input('proxyPort', 'proxyPort', store.get('proxyPort') || '')}
-            </div>`;
-
-        const plugins = `
+            </div>`,
+                ) +
+                section(
+                    'plugins',
+                    `
             <div class="plugin-list" id="pluginList">
                 ${text('noPluginsFound', 'div', 'no-plugins')}
             </div>
@@ -270,7 +327,9 @@ export class SettingsManager {
                 ${button('openPluginsFolder', 'openPluginsFolder')}
                 ${button('refreshPlugins', 'refreshPlugins')}
             </div>
-            ${hint('pluginsDescription')}`;
+            ${hint('pluginsDescription')}`,
+                ),
+        );
 
         return `<!doctype html>
         ${cspMetaTag()}
@@ -283,18 +342,24 @@ export class SettingsManager {
                 </svg>
             </button>
         </header>
+        <nav class="tabs" role="tablist">
+            ${tabs
+                .map(
+                    ([key], i) =>
+                        `<button type="button" role="tab" id="tab-${key}" aria-controls="panel-${key}"
+                            aria-selected="${i === 0}" data-i18n="${key}">${t(key)}</button>`,
+                )
+                .join('')}
+        </nav>
         <main>
-            ${section('downloads', downloads)}
-            ${section('general', general)}
-            ${section('appearance', appearance)}
-            ${section('accounts', accounts)}
-            ${section('discord', discord)}
-            ${section('lastfm', lastFm)}
-            ${section('webhooks', webhooks)}
-            ${section('network', network)}
-            ${section('plugins', plugins)}
+            ${tabs
+                .map(
+                    ([key, body], i) =>
+                        `<div role="tabpanel" id="panel-${key}" aria-labelledby="tab-${key}" ${i === 0 ? '' : 'hidden'}>${body}</div>`,
+                )
+                .join('')}
         </main>
-        <footer>
+        <footer hidden>
             <button type="button" class="btn primary" id="applyChanges" data-i18n="applyChanges">${t('applyChanges')}</button>
         </footer>
         <script src="/settingsPanel.js"></script>

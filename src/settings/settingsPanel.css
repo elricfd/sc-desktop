@@ -35,6 +35,11 @@ body {
     height: 100%;
 }
 
+/* classes below set display; hidden must still win */
+[hidden] {
+    display: none !important;
+}
+
 body {
     display: flex;
     flex-direction: column;
@@ -91,11 +96,52 @@ h1 {
     background: var(--bg-hover);
 }
 
+/* scrolls sideways when labels outgrow narrow panel */
+.tabs {
+    display: flex;
+    gap: 16px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.tabs button {
+    flex: none;
+    padding: 10px 0 8px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.tabs button:hover {
+    color: var(--text-primary);
+}
+
+.tabs button[aria-selected='true'] {
+    border-bottom-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.tabs button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
 main {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     padding: 0 20px 20px;
+}
+
+/* untitled first section: no h2 to space it from tabs */
+[role='tabpanel'] > section:first-child:not(:has(> h2)) {
+    padding-top: 10px;
 }
 
 section + section {
@@ -158,12 +204,14 @@ section > .buttons {
     margin-bottom: 6px;
 }
 
-/* shown/hidden by settingsPanel.js with toggle above */
+/* shown/hidden by settingsPanel.js with toggle above; indented under it */
 .subfields {
-    padding-bottom: 6px;
+    margin-bottom: 6px;
+    padding-left: 12px;
+    border-left: 2px solid var(--border);
 }
 
-.subfields > * + * {
+.subfields > .textInput + .textInput {
     margin-top: 8px;
 }
 
@@ -399,6 +447,15 @@ details {
     font-size: 12px;
 }
 
+/* rarely changed download fields, folded away */
+details.advanced {
+    font-size: inherit;
+}
+
+details.advanced[open] > summary {
+    margin-bottom: 2px;
+}
+
 summary {
     padding: 4px 0;
     color: var(--text-secondary);
@@ -603,8 +660,14 @@ footer {
 }
 
 @media (max-width: 380px) {
-    .panel-header {
+    .panel-header,
+    .tabs {
         padding-left: 14px;
+    }
+
+    .tabs {
+        gap: 12px;
+        padding-right: 14px;
     }
 
     main {
