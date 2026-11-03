@@ -1,5 +1,5 @@
 import { app, type WebContents } from 'electron';
-import { chromeBrandList } from './userAgent';
+import { chromeAcceptLanguage, chromeBrandList } from './userAgent';
 
 /** Electron's bare "Chromium" brand vs Chrome UA: bot-detection mismatch, add "Google Chrome" brand
  * via devtools, only route keeping Sec-CH-UA and navigator.userAgentData consistent */
@@ -9,6 +9,8 @@ export async function presentAsChrome(content: WebContents, secureView: WebConte
     );
     const override = {
         userAgent,
+        // Accept-Language and navigator.languages together, so they agree
+        acceptLanguage: chromeAcceptLanguage(app.getLocale()),
         userAgentMetadata: {
             brands: chromeBrandList(real.uaFullVersion, false),
             fullVersionList: chromeBrandList(real.uaFullVersion, true),

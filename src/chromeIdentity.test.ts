@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('electron', () => ({ app: { once: vi.fn(), off: vi.fn() } }));
+vi.mock('electron', () => ({ app: { once: vi.fn(), off: vi.fn(), getLocale: () => 'en-US' } }));
 
 import { presentAsChrome } from './utils/chromeIdentity';
 

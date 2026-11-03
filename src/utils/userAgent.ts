@@ -41,3 +41,9 @@ export function chromeBrandList(chromiumVersion: string, full: boolean): UaBrand
     list[order[2]] = { brand: 'Google Chrome', version };
     return list;
 }
+
+// Chrome's default languages: locale then its base ("en-US,en"); Electron sends locale alone
+export function chromeAcceptLanguage(locale: string): string {
+    const base = locale.split('-')[0];
+    return base && base !== locale ? `${locale},${base}` : locale;
+}

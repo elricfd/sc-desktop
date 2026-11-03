@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chromeBrandList, deriveBrowserUserAgent } from './utils/userAgent';
+import { chromeAcceptLanguage, chromeBrandList, deriveBrowserUserAgent } from './utils/userAgent';
 
 // Electron default UA: Chromium UA + app token + Electron token
 const ELECTRON_UA =
@@ -57,5 +57,13 @@ describe('chromeBrandList', () => {
             { brand: 'Chromium', version: '131.0.6778.86' },
             { brand: 'Not_A Brand', version: '24.0.0.0' },
         ]);
+    });
+});
+
+describe('chromeAcceptLanguage', () => {
+    it('adds the base language after a regional locale, as Chrome does', () => {
+        expect(chromeAcceptLanguage('en-US')).toBe('en-US,en');
+        expect(chromeAcceptLanguage('pt-BR')).toBe('pt-BR,pt');
+        expect(chromeAcceptLanguage('es')).toBe('es');
     });
 });
