@@ -62,11 +62,21 @@ fallback can be turned off there too.
 
 ### Updates
 
-The app checks for a new release when it starts, fetches it in the background and installs it when you quit. That works
-on Windows, from the AppImage and the .deb on Linux (the .deb asks for your password as the app quits), and on macOS for
-an app that sits in a folder you can write to, such as Applications. The macOS builds are not signed with an Apple
-Developer ID, so the app replaces itself there instead of leaving it to macOS; a release from before 1.2.1 has to be
-updated by hand once. Turn updates off in Settings.
+The app checks for a new release when it starts and every four hours, and fetches it in the background. On Windows and
+Linux it then offers to restart; choose Later and it installs when you quit. On macOS it always installs when you quit.
+That works on Windows, from the AppImage and the .deb on Linux (the .deb asks for your password as the app quits), and
+on macOS for an app that sits in a folder you can write to, such as Applications. The macOS builds are not signed with
+an Apple Developer ID, so the app replaces itself there instead of leaving it to macOS; a release from before 1.2.1 has
+to be updated by hand once. Turn updates off in Settings.
+
+### Logs
+
+If the app freezes or crashes, its log and crash dumps help track it down. They stay on your computer and are never sent
+anywhere:
+
+- Windows: `%APPDATA%\sc-desktop\logs\main.log` and `%APPDATA%\sc-desktop\Crashpad`
+- macOS: `~/Library/Logs/sc-desktop/main.log` and `~/Library/Application Support/sc-desktop/Crashpad`
+- Linux: `~/.config/sc-desktop/logs/main.log` and `~/.config/sc-desktop/Crashpad`
 
 ## Shortcuts
 

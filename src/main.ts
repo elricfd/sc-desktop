@@ -44,6 +44,7 @@ import { ejectDmg, findInstallerDmg } from './utils/installerDmg';
 import { DEFAULT_FOLDER, DEFAULT_TEMPLATE } from './utils/ytdlp';
 import { personalSearchScript, readSuggestions, suggestScript } from './utils/searchSuggest';
 import { presentAsChrome } from './utils/chromeIdentity';
+import { startCrashReports, startLogFile, watchStalls } from './utils/diagnostics';
 import {
     EMPTY_PAGE_INFO,
     displayUrl,
@@ -60,6 +61,10 @@ import { platform } from 'os';
 const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 const windowStateManager = require('electron-window-state');
+
+// first: everything after lands in log, crashes leave dump
+startLogFile();
+startCrashReports();
 
 export const RESOURCES_PATH = app.isPackaged
     ? path.join(process.resourcesPath, 'assets')
@@ -947,6 +952,7 @@ function wireTab(tab: Tab): void {
 }
 
 async function init() {
+    watchStalls();
     // serves settings, notification, confirm docs: must be in place before those views load
     handleAppScheme();
 
