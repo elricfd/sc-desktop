@@ -1516,6 +1516,18 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
               }
           `;
 
+    // clicks land in header view, never page, so Chromium treats script focus as keyboard focus:
+    // ring drawn round panels SoundCloud focuses itself (upload's white side bars); tabindex=-1 is never tabbed to
+    const scriptFocusCss = '[tabindex="-1"]:focus-visible { outline: none !important; }';
+
+    // webi frames (upload, Artist Studio, insights): separate MUI app with own palette vars
+    const webiCss = `
+        ${scrollbarCss}
+        ${scriptFocusCss}
+        ${hideArtistUpsells ? '.MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }' : ''}
+    `;
+    const mapThemeToWebi = isDark && !!customThemeCSS;
+
     const themeScript = `
         (function() {
             try {
@@ -1546,6 +1558,8 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                     
                     ${hideEventsNearYou ? '.velvetCakeModule { display: none !important; }' : ''}
 
+                    ${scriptFocusCss}
+
                     /* search lives in title bar (header.html) */
                     .header__search { display: none !important; }
 
@@ -1561,35 +1575,68 @@ function applyThemeToContent(isDark: boolean, only?: BrowserView) {
                 }
                 document.head.appendChild(style);
 
-                // same-origin iframe upsells: out of stylesheet reach
-                if (window._artistUpsellInterval) {
-                    clearInterval(window._artistUpsellInterval);
-                    window._artistUpsellInterval = null;
-                }
-                if (${hideArtistUpsells}) window._artistUpsellInterval = setInterval(() => {
-                    document.querySelectorAll('iframe[title="Artist tools"], iframe[title="Sidebar modules"]').forEach(iframe => {
-                        try {
-                            const doc = iframe.contentDocument || iframe.contentWindow?.document;
-                            const container = iframe.closest('.webiEmbeddedModuleContainer');
-                            
-                            if (container && doc) {
-                                // fan-support waitlist card
-                                if (!doc.getElementById('custom-iframe-style')) {
-                                    const iframeStyle = doc.createElement('style');
-                                    iframeStyle.id = 'custom-iframe-style';
-                                    iframeStyle.textContent = '.MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }';
-                                    doc.head.appendChild(iframeStyle);
-                                }
+                // theme colours onto webi palette vars: surface for page, highlight for cards
+                // read per pass: theme stylesheet can land after this script; rebuilt only when colours change
+                const themeVars = {
+                    '--surface-color': [['background-default', 'background-paper', 'common-background', 'AppBar-darkBg'], ['background-defaultChannel', 'background-paperChannel', 'common-backgroundChannel']],
+                    '--highlight-color': [['background-tonal', 'background-dark', 'background-low'], ['background-darkChannel']],
+                    '--primary-color': [['text-primary'], ['text-primaryChannel']],
+                    '--secondary-color': [['text-secondary'], ['text-secondaryChannel']],
+                };
+                let paletteKey = null;
+                let webiStyle = ${JSON.stringify(webiCss)};
+                const refreshWebiStyle = () => {
+                    if (!${mapThemeToWebi}) return;
+                    const theme = getComputedStyle(document.body);
+                    const colors = Object.keys(themeVars).map((name) => theme.getPropertyValue(name).trim());
+                    const key = colors.join('|');
+                    if (key === paletteKey) return;
+                    paletteKey = key;
 
-                                // paywall-only module: hide whole container
-                                const paywalled = doc.querySelector('svg[aria-label="Paywalled feature"]');
-                                container.style.display = paywalled ? 'none' : '';
+                    const probe = document.body.appendChild(document.createElement('i'));
+                    // any colour format to "r g b", as MUI *Channel vars want
+                    const channels = (color) => {
+                        probe.style.color = color;
+                        return (getComputedStyle(probe).color.match(/[\\d.]+/g) || []).slice(0, 3).join(' ');
+                    };
+                    const vars = [];
+                    Object.values(themeVars).forEach(([muiVars, channelVars], i) => {
+                        const color = colors[i];
+                        if (!color) return;
+                        muiVars.forEach((name) => vars.push('--mui-palette-' + name + ': ' + color + ' !important;'));
+                        channelVars.forEach((name) => vars.push('--mui-palette-' + name + ': ' + channels(color) + ' !important;'));
+                    });
+                    probe.remove();
+                    webiStyle = ${JSON.stringify(webiCss)} + '.mui-theme-dark { ' + vars.join(' ') + ' }';
+                };
+
+                // same-origin webi frames: out of stylesheet reach, so styled per frame; also catches frames added later
+                if (window._webiInterval) clearInterval(window._webiInterval);
+                const styleWebiFrames = () => {
+                    refreshWebiStyle();
+                    document.querySelectorAll('iframe.webiIframe, iframe.webiEmbeddedModuleIframe').forEach(iframe => {
+                        try {
+                            const doc = iframe.contentDocument;
+                            if (!doc?.head) return;
+                            let style = doc.getElementById('custom-iframe-style');
+                            if (!style) {
+                                style = doc.createElement('style');
+                                style.id = 'custom-iframe-style';
+                                doc.head.appendChild(style);
                             }
+                            if (style.textContent !== webiStyle) style.textContent = webiStyle;
+
+                            // paywall-only module: hide whole container
+                            const container = iframe.closest('.webiEmbeddedModuleContainer');
+                            const paywalled = ${hideArtistUpsells} && doc.querySelector('svg[aria-label="Paywalled feature"]');
+                            if (container) container.style.display = paywalled ? 'none' : '';
                         } catch(e) {
-                            // iframe not loaded yet: next pass retries
+                            // cross-origin or not loaded yet: next pass retries
                         }
                     });
-                }, 1000);
+                };
+                styleWebiFrames();
+                window._webiInterval = setInterval(styleWebiFrames, 500);
 
                 // reject optional OneTrust categories (targeting, functional, performance): default on
                 // OneTrust loads late, so wait; remembers choice in own cookie
