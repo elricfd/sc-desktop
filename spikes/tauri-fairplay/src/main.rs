@@ -4,9 +4,10 @@
 // blocked (adblock.rs) and the current track shown in Discord
 // (nowplaying.js -> presence.rs). Env: ADBLOCK=0 and
 // DISCORD=0 turn those off, TRACE=1 logs media/DRM/hls.js events to stdout.
-// UI=custom swaps SoundCloud's site for our own page (custom.html), which
-// talks to SoundCloud's API and plays streams itself, with our own title bar
-// and settings panel (saved in settings.json; env vars above override it).
+// By default the window shows soundcloud.com under our own title bar and
+// settings panel (chrome.js; settings saved in settings.json, env vars above
+// override it). UI=custom swaps SoundCloud's site for our own page
+// (custom.html), which talks to SoundCloud's API and plays streams itself.
 // Each stdin line is JavaScript run in the page, so tests can drive it.
 mod adblock;
 mod lastfm;
@@ -59,6 +60,7 @@ fn main() -> wry::Result<()> {
     enum Ev {
         Js(String),
         Snap(String),
+        Place(f64, f64, f64, f64),
         Load,
         Drag,
         Zoom,
@@ -73,9 +75,12 @@ fn main() -> wry::Result<()> {
     let stdin_proxy = proxy.clone();
     std::thread::spawn(move || {
         for line in std::io::stdin().lines().map_while(Result::ok) {
-            let ev = match line.strip_prefix("SNAP ") {
-                Some(path) => Ev::Snap(path.to_string()),
-                None => Ev::Js(line),
+            // `WINDOW x y w h` places the window (logical points), for side-by-side tests.
+            let place: Option<Vec<f64>> = line.strip_prefix("WINDOW ").map(|r| r.split_whitespace().filter_map(|n| n.parse().ok()).collect());
+            let ev = match (line.strip_prefix("SNAP "), place) {
+                (Some(path), _) => Ev::Snap(path.to_string()),
+                (_, Some(v)) if v.len() == 4 => Ev::Place(v[0], v[1], v[2], v[3]),
+                _ => Ev::Js(line),
             };
             if stdin_proxy.send_event(ev).is_err() {
                 break;
@@ -87,12 +92,12 @@ fn main() -> wry::Result<()> {
     let mut window = WindowBuilder::new()
         .with_title("SoundCloud (Rust)")
         .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0));
-    // Note: Windows keeps the native frame above the page's own title bar;
-    // with_decorations(false) + window buttons in custom.html when that lands.
+    // Windows starts with the native frame and drops it once the page has drawn
+    // its own window buttons ("frameless").
     #[cfg(target_os = "macos")]
-    if custom {
-        // Our page draws the title bar (custom.html, from the Electron app's
-        // header.css); the traffic lights sit over its 32px bar.
+    {
+        // The page draws the title bar (chrome.js or custom.html, from the
+        // Electron app's header.css); the traffic lights sit over its 32px bar.
         use tao::platform::macos::WindowBuilderExtMacOS;
         window = window
             .with_titlebar_transparent(true)
@@ -183,6 +188,9 @@ fn main() -> wry::Result<()> {
                 if url.starts_with("https://") {
                     let _ = open_url(url);
                 }
+            } else if body == "chrome:ready" {
+                // chrome.js after a load: the settings saved since the launch
+                let _ = page_proxy.send_event(Ev::Js(format!("window.__chromeState && window.__chromeState({}, {})", load_settings(), lastfm::status())));
             } else if body == "reload" {
                 // signed in or out in an embedded SoundCloud page: start over with that session
                 let _ = page_proxy.send_event(Ev::Load);
@@ -204,6 +212,11 @@ fn main() -> wry::Result<()> {
         })
         .with_devtools(true)
         .with_autoplay(true);
+    if !custom {
+        // our title bar and settings over soundcloud.com, with the saved settings
+        let state = format!("window.__settings = {settings}; window.__lastfm = {};", lastfm::status());
+        builder = builder.with_initialization_script_for_main_only(state, true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
+    }
     if on("TRACE", false) {
         builder = builder.with_initialization_script(include_str!("trace.js"));
     }
@@ -224,6 +237,10 @@ fn main() -> wry::Result<()> {
                 let _ = webview.evaluate_script(&js);
             }
             Event::UserEvent(Ev::Snap(path)) => snapshot(&webview, path),
+            Event::UserEvent(Ev::Place(x, y, w, h)) => {
+                window.set_outer_position(tao::dpi::LogicalPosition::new(x, y));
+                window.set_inner_size(tao::dpi::LogicalSize::new(w, h));
+            }
             Event::UserEvent(Ev::Load) if custom => load_custom(&webview, &settings),
             // From a mousedown/double-click on our title bar.
             Event::UserEvent(Ev::Drag) => {

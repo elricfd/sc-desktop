@@ -131,8 +131,10 @@ struct Creds {
     session: String,
 }
 fn creds() -> Option<Creds> {
-    if !status()["connected"].as_bool().unwrap_or(false) {
-        return None; // don't touch the Keychain until connected
+    // Not until connected, and never in test copies (LASTFM=0): every new
+    // unsigned binary is a new app to the Keychain and asks again.
+    if !status()["connected"].as_bool().unwrap_or(false) || std::env::var("LASTFM").as_deref() == Ok("0") {
+        return None;
     }
     Some(Creds { api_key: keychain("api_key")?, secret: keychain("secret")?, session: keychain("session")? })
 }

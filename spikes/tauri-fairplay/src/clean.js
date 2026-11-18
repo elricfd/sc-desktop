@@ -16,7 +16,8 @@
     .spotlight:has(.spotlight__upsellBanner), .spotlight__upsellBanner, .spotlight__upsellCTA,
     .sidebarContent:has(.velvetCakeIframe), .quotaMeter__upsellText,
     .artistConnectContainer .tileGallery__sliderPeekForward, .artistConnectContainer .tileGallery__sliderPeekBackward,
-    .MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }
+    .MuiBox-root:has(a[href*="getstarted/fan-support"]),
+    .quotaMeterWrapper, .banner:has(.firstFansPromotionBanner__link), .sidebarModule:has(iframe[src*="/n/embeds/credit-tracker"]) { display: none !important; }
   `;
   const style = document.createElement('style');
   style.textContent = css;
@@ -32,6 +33,24 @@
   if (container) {
     const check = () => { container.style.display = document.querySelector('svg[aria-label="Paywalled feature"]') ? 'none' : ''; };
     new MutationObserver(check).observe(document, { childList: true, subtree: true });
+  }
+
+  // Artist Pro upsell cards on SoundCloud's newer pages (/n/ frames, e.g. the
+  // track page) have no stable class names: find their buttons by text and
+  // hide the card around each, stopping below the column with Details/comments.
+  if (location.pathname.startsWith('/n/')) {
+    const UPSELL = /^(Upgrade|Get Artist Pro)$/;
+    const hideCards = () => {
+      for (const b of document.querySelectorAll('button')) {
+        if (!UPSELL.test(b.textContent.trim()) || b.closest('[data-sc-upsell]')) continue;
+        let card = b;
+        for (let up = 0; up < 6 && card.parentElement && card.parentElement !== document.body && !/details|comments?/i.test(card.parentElement.innerText); up++) card = card.parentElement;
+        // Only a card: never a whole section of a page without that column.
+        if (/Artist Pro/.test(card.innerText) && card.innerText.length < 600) { card.dataset.scUpsell = ''; card.style.display = 'none'; }
+      }
+    };
+    let timer = 0;
+    new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(hideCards, 150); }).observe(document, { childList: true, subtree: true });
   }
 
   // Opt out of every optional OneTrust cookie category (on by default).

@@ -48,6 +48,9 @@
   /* A framed page scrolls inside its frame; ours scrolling behind it shows a second scrollbar. */
   body:has(.pocEmbed) { overflow: hidden; }
   .pocToast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 10000; padding: 8px 14px; border-radius: 6px; background: #333; color: #fff; font: 13px/1.4 -apple-system, 'Segoe UI', sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  /* SoundCloud's header is at least 960 px wide; in a narrower window the
+     empty middle gives way so Artist/Upload/avatar/menus stay on screen. */
+  @media (max-width: 1080px) { header.header .header__inner { width: auto !important; min-width: 0; padding-right: 16px; box-sizing: border-box; } .header__middle { min-width: 0; } }
   .pocEmbed { position: fixed; top: 80px; left: 0; width: 100%; height: calc(100vh - 80px - var(--poc-player, 48px)); border: 0; display: block; }
   /* SoundCloud pins its messages column under its own, shorter header and has no player bar under it. */
   .l-messages-left { top: 80px; bottom: var(--poc-player, 48px); }
@@ -71,8 +74,9 @@
   .pocTitlebar .nav-button.refreshing svg { animation: pocSpin 1s linear infinite; }
   @keyframes pocSpin { to { transform: rotate(360deg); } }
   .pocTitlebar .title-bar { align-self: stretch; flex: 1 1 16px; min-width: 16px; }
-  .pocTitlebar .tab-group { display: flex; align-items: center; height: 22px; padding: 2px; border-radius: 8px; background: var(--hover-bg); }
-  .pocTitlebar .tab { display: flex; align-items: center; gap: 6px; width: 320px; min-width: 150px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 6px; background: var(--hover-bg); overflow: hidden; }
+  /* Shrinks in a narrow window instead of running under the search box. */
+  .pocTitlebar .tab-group { min-width: 0; max-width: 100%; display: flex; align-items: center; height: 22px; padding: 2px; border-radius: 8px; background: var(--hover-bg); }
+  .pocTitlebar .tab { display: flex; align-items: center; gap: 6px; width: 320px; max-width: 100%; min-width: 0; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 6px; background: var(--hover-bg); overflow: hidden; }
   .pocTitlebar .tab-icon { flex: none; width: 16px; height: 16px; }
   .pocTitlebar .tab-icon svg { width: 16px; height: 16px; display: block; }
   .pocTitlebar .tab-title, .pocTitlebar .tab-path { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
@@ -1369,6 +1373,18 @@
       }
     }
   });
+  // Below 768 px SoundCloud's track page switches to its phone layout, which
+  // drops the waveform. In a narrower window draw it 768 px wide, scaled to fit.
+  const WEBI_MIN = 768;
+  function fitWebi() {
+    const f = webiFrame;
+    if (!f?.isConnected) return;
+    const k = Math.min(1, innerWidth / WEBI_MIN);
+    Object.assign(f.style, k < 1
+      ? { width: WEBI_MIN + 'px', height: `calc((100vh - 80px - var(--poc-player, 48px)) / ${k})`, transform: `scale(${k})`, transformOrigin: '0 0' }
+      : { width: '', height: '', transform: '', transformOrigin: '' });
+  }
+  addEventListener('resize', fitWebi);
   async function viewTrackPage(path, token) {
     const p = path.split('?')[0];
     webiReady = false;
@@ -1376,6 +1392,7 @@
     $('content').style.setProperty('--poc-player', $('playControls').offsetHeight + 'px');
     const f = webiFrame = $('content').firstElementChild;
     f.addEventListener('load', () => { try { prepFrame(f.contentWindow); } catch {} });
+    fitWebi();
     // The queue, as on SoundCloud: this track, then its related tracks.
     const t = await api('/resolve', { url: 'https://soundcloud.com/' + p });
     if (token !== viewToken) return;
@@ -1613,13 +1630,31 @@
     const dpr = devicePixelRatio || 1, cw = Math.round((c.clientWidth || c.width / 2) * dpr), ch = Math.round((c.clientHeight || 60) * dpr);
     if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
     const g = c.getContext('2d'), W = c.width, H = c.height, pitch = 3 * dpr, bars = Math.floor(W / pitch), max = w.height || 140;
-    g.clearRect(0, 0, W, H);
-    for (let b = 0; b < bars; b++) {
-      const v = w.samples[Math.floor(b / bars * w.samples.length)] / max;
-      g.fillStyle = b / bars < progress ? '#f50' : '#999';
-      const h = Math.max(2 * dpr, v * H * 0.95), x = Math.round(b * pitch);
-      g.fillRect(x, H - h, Math.round(b * pitch + 2 * dpr) - x, h);
+    const paint = (color, from = 0, to = W) => {
+      g.fillStyle = color;
+      for (let b = Math.max(0, Math.floor(from / pitch)); b < Math.min(bars, Math.ceil(to / pitch) + 1); b++) {
+        const v = w.samples[Math.floor(b / bars * w.samples.length)] / max;
+        const h = Math.max(2 * dpr, v * H * 0.95), x = Math.round(b * pitch);
+        g.fillRect(x, H - h, Math.round(b * pitch + 2 * dpr) - x, h);
+      }
+    };
+    // The played part is cut at the exact position, so the bar under the
+    // playhead fills gradually. While playing forward only the new sliver is
+    // painted; redrawing everything every frame cost ~25% CPU.
+    const x = Math.round(progress * W), was = c.playedTo;
+    if (was && was.id === t.id && was.W === W && x >= was.x) {
+      if (x === was.x) return;
+      g.save(); g.beginPath(); g.rect(was.x, 0, x - was.x, H); g.clip();
+      paint('#f50', was.x, x);
+      g.restore();
+    } else {
+      g.clearRect(0, 0, W, H);
+      paint('#999');
+      g.save(); g.beginPath(); g.rect(0, 0, x, H); g.clip();
+      paint('#f50', 0, x);
+      g.restore();
     }
+    c.playedTo = { id: t.id, W, x };
   }
 
   // --- Playback
@@ -1665,6 +1700,9 @@
 
   async function play(i, startFraction = 0) {
     if (i < 0 || i >= queue.length) return;
+    // The track we leave goes back to an unplayed waveform, as on SoundCloud.
+    const left = order[pos];
+    if (left !== undefined && left !== i) drawWave(queue[left], left, 0);
     pos = order.indexOf(i);
     let t = queue[i];
     upNext = upNext.filter(x => x.id !== t.id);
@@ -1875,15 +1913,22 @@
   const setVolume = v => { audio.muted = false; audio.volume = Math.min(1, Math.max(0, v)); };
 
   audio.addEventListener('seeked', () => { seekPending = null; report(); });
-  audio.addEventListener('timeupdate', () => {
+  function paintPosition() {
     if (!audio.duration || dragging) return;
     const t = seekPending ?? audio.currentTime;
     setProgress(t / audio.duration);
-    $('passed').textContent = fmt(t * 1000);
-    $('dur').textContent = fmt(audio.duration * 1000);
+    const passed = fmt(t * 1000), dur = fmt(audio.duration * 1000);
+    if ($('passed').textContent !== passed) $('passed').textContent = passed;
+    if ($('dur').textContent !== dur) $('dur').textContent = dur;
     const i = order[pos];
     if (document.querySelector('.soundList__item')) drawWave(queue[i], i, t / audio.duration);
-  });
+  }
+  // timeupdate comes only a few times a second, which moves the bar and the
+  // waveform in visible jumps; SoundCloud repaints every frame while playing.
+  let frame = 0;
+  const tick = () => { frame = audio.paused ? 0 : requestAnimationFrame(tick); paintPosition(); };
+  audio.addEventListener('playing', () => { if (!frame) frame = requestAnimationFrame(tick); });
+  audio.addEventListener('timeupdate', paintPosition);
   audio.addEventListener('play', () => { paintPlayState(); markPlaying(); report(); });
   audio.addEventListener('pause', () => { paintPlayState(); markPlaying(); report(); });
   audio.addEventListener('ended', () => repeat === 'one' ? (audio.currentTime = 0, audio.play()) : step(1));
