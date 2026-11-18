@@ -29,7 +29,7 @@
   .pocQueue__meta div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .queue__scrollable { overflow-y: auto !important; max-height: 420px; }
   /* SoundCloud pins its sidebar with a computed top; sticky does the same. */
-  .l-sidebar-right .streamSidebar { position: sticky; top: 90px; }
+  .l-sidebar-right .streamSidebar, .l-sidebar-right .userSidebar { position: sticky; top: 90px; }
   .artistShortcutTile__button { cursor: pointer; }
   /* Their linked .sc-artwork radius loads after the injected .image__rounded here. */
   .sc-artwork.image__rounded { border-radius: 50%; }
@@ -72,7 +72,7 @@
   .pocTitlebar .tab-title, .pocTitlebar .tab-path { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
   .pocTitlebar .tab-title { flex: 0 1 auto; }
   .pocTitlebar .tab-path { flex: 1 1 0; opacity: .5; }
-  .pocTitlebar .pocSearch { display: flex; align-items: center; gap: 6px; width: 264px; height: 22px; margin-right: 8px; padding: 0 8px; border-radius: 6px; background: var(--hover-bg); }
+  .pocTitlebar .pocSearch { display: flex; align-items: center; gap: 6px; width: 198px; height: 22px; margin-right: 8px; padding: 0 8px; border-radius: 6px; background: var(--hover-bg); }
   .pocTitlebar .pocSearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
   .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
   .header.fixed { top: 32px !important; }
@@ -196,23 +196,22 @@
       <div class="header__middle"></div>
       <!-- SoundCloud's header__right, in their order (their "Try Artist Pro" upsell left out). -->
       <div class="header__right sc-clearfix" id="headerRight" style="display: none;">
-        <a href="/artists" data-href="artists" class="header__link header__forArtistsButton">Artist Studio</a>
+        <a href="/artists" data-href="artists" class="header__link header__forArtistsButton">Artist</a>
         <div class="header__soundInput left"><a href="/upload" data-href="upload" class="uploadButton header__link" tabindex="0"><span class="uploadButton__title">Upload</span><span class="uploadButton__status sc-text-primary"></span></a></div>
         <div class="header__userNav">
-          <a href="" class="header__userNavButton header__userNavUsernameButton" id="me" tabindex="0" aria-haspopup="true" role="button">
+          <a class="header__userNavButton header__userNavUsernameButton" id="me" tabindex="0" aria-haspopup="true" role="button">
             <div class="image header__userNavItem header__userNavAvatar image__lightOutline sc-artwork image__rounded m-loaded" style="height: 26px; width: 26px;">
               <span id="meAvatar" style="width: 26px; height: 26px; opacity: 1;" class="sc-artwork image__rounded image__full"></span>
             </div>
-            <div class="header__userNavUsernameButtonIcon sc-ml-0.5x"><div data-icon="chevron"></div></div>
           </a>
-          <a href="/notifications" id="bell" class="header__userNavItem header__userNavButton header__userNavActivitiesButton" tabindex="0" aria-haspopup="true" role="button">
+          <a id="bell" class="header__userNavItem header__userNavButton header__userNavActivitiesButton" tabindex="0" aria-haspopup="true" role="button">
             <div class="notificationIcon activities"><div data-icon="bell"></div><span class="sc-visuallyhidden">Notifications</span><span class="notificationIcon__badge"><span class="newItemBadge"></span></span></div>
           </a>
-          <a href="/messages" id="envelope" class="header__userNavItem header__userNavButton header__userNavMessagesButton" tabindex="0" aria-haspopup="true" role="button">
+          <a id="envelope" class="header__userNavItem header__userNavButton header__userNavMessagesButton" tabindex="0" aria-haspopup="true" role="button">
             <div class="notificationIcon messages"><div data-icon="envelope"></div><span class="sc-visuallyhidden">Messages</span><span class="notificationIcon__badge"><span class="newItemBadge"></span></span></div>
           </a>
         </div>
-        <ul class="header__navMenu sc-clearfix sc-list-nostyle left"><li><a href="" id="moreBtn" class="header__moreButton" tabindex="0" aria-haspopup="true" role="button"><div class="header__moreButtonIcon"><div data-icon="headerMore"></div><span class="sc-visuallyhidden">Settings and more</span></div></a></li></ul>
+        <ul class="header__navMenu sc-clearfix sc-list-nostyle left"><li><a id="moreBtn" class="header__moreButton" tabindex="0" aria-haspopup="true" role="button"><div class="header__moreButtonIcon"><div data-icon="headerMore"></div><span class="sc-visuallyhidden">Settings and more</span></div></a></li></ul>
       </div>
     </div>
   </header>
@@ -320,6 +319,8 @@
     bell: '<svg class="ic" viewBox="0 0 16 16"><path d="M8 2a4 4 0 0 0-4 4v3L2.5 11.5h11L12 9V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0z"/></svg>',
     envelope: '<svg class="ic" viewBox="0 0 16 16"><path d="M2 4h12v8H2zm1 1v.3l5 3.2 5-3.2V5z"/></svg>',
     headerMore: '<svg class="ic" viewBox="0 0 16 16"><path d="M2 6.5h3v3H2zm4.5 0h3v3h-3zm4.5 0h3v3h-3z"/></svg>',
+    edit: '<svg class="ic" viewBox="0 0 16 16"><path d="M11.5 2l2.5 2.5L5.5 13 2 14l1-3.5z"/></svg>',
+    net_personal: '<svg class="ic" viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5c.6.7 1.1 1.7 1.3 2.8H6.7C6.9 4.2 7.4 3.2 8 2.5zM3.4 6.8h2.2a12 12 0 0 0 0 2.4H3.4a5.5 5.5 0 0 1 0-2.4zm9.2 0a5.5 5.5 0 0 1 0 2.4h-2.2a12 12 0 0 0 0-2.4z"/></svg>',
   };
   // On SoundCloud's round play button (the circle is the button's CSS background).
   const PAUSE = '<svg class="ic" viewBox="0 0 16 16"><path d="M4.5 3.5h2.25v9H4.5zm4.75 0h2.25v9H9.25z"/></svg>';
@@ -389,8 +390,14 @@
     pmStations: '.profileMenu a[href="/you/stations"] svg', pmFollowing: '.profileMenu a[href="/you/following"] svg', pmPeople: '.profileMenu a[href="/people"] svg',
     pmBenefits: '.profileMenu a[href*="/benefits"] svg', pmTracks: '.profileMenu a[href="/artists"] svg', pmInsights: '.profileMenu a[href="/you/insights"] svg',
     pmDistribute: '.profileMenu li:last-child svg', selectChevron: '.activitiesFilterSelect__button svg',
+    // The profile's tab-bar buttons and web links (harvest() opens /soundcloud and your own profile).
+    profStation: '.userInfoBar .sc-button-startstation svg', edit: '.userInfoBar .sc-button-edit svg', message: '.userInfoBar .sc-button-message svg',
+    net_instagram: '.web-profile[href*="instagram.com"] svg', net_twitter: '.web-profile[href*="twitter.com"] svg', net_x: '.web-profile[href*="%2Fx.com"] svg',
+    net_youtube: '.web-profile[href*="youtube.com"] svg', net_facebook: '.web-profile[href*="facebook.com"] svg', net_spotify: '.web-profile[href*="spotify.com"] svg',
+    net_bandcamp: '.web-profile[href*="bandcamp.com"] svg', net_tiktok: '.web-profile[href*="tiktok.com"] svg',
+    net_personal: '.web-profile:not([href*="instagram.com"]):not([href*="twitter.com"]):not([href*="%2Fx.com"]):not([href*="youtube.com"]):not([href*="facebook.com"]):not([href*="spotify.com"]):not([href*="bandcamp.com"]):not([href*="tiktok.com"]) svg',
   };
-  const HARVEST_REV = 'r5'; // bump when the pages/icons collected change
+  const HARVEST_REV = 'r6'; // bump when the pages/icons collected change
   // SoundCloud keeps "notifications read up to" in this localStorage entry
   // ({activities: <uuid of the newest one seen>}); there's no server call.
   const NOTIFY_KEY = 'V2::local::notify';
@@ -412,7 +419,8 @@
       X.send = function () { if (ok(this.__pocM)) return os.apply(this, arguments); };
       if (w.navigator.sendBeacon) w.navigator.sendBeacon = () => true;
     };
-    for (const path of ['/you/likes', '/search/sounds?q=music', '/feed', '/you/library', '/you/following', '/soundcloud', '/notifications', '/messages', '/discover']) {
+    for (let path of ['/you/likes', '/search/sounds?q=music', '/feed', '/you/library', '/you/following', '/soundcloud', '@me', '/notifications', '/messages', '/discover']) {
+      if (path === '@me') { if (!me) continue; path = '/' + me.permalink; } // your own profile: the Edit button and your sidebar
       const f = document.createElement('iframe');
       f.style.cssText = 'position:fixed;left:-20000px;top:0;width:1400px;height:900px;visibility:hidden';
       f.src = path;
@@ -427,6 +435,8 @@
         last = n;
       }
       const doc = f.contentDocument;
+      // A profile's web links arrive after its styles settle.
+      if (path === '/soundcloud' || path === '/' + me?.permalink) for (let k = 0; k < 20 && !doc?.querySelector('.web-profile'); k++) await sleep(500);
       // The "more" menu and Add to Playlist modal bring their CSS and icons only
       // when opened; opening them (and closing) changes nothing on the account.
       if (path === '/discover') {
@@ -853,6 +863,11 @@
     li.querySelector('.soundBadge__artwork').onclick = () => toggleOrPlay(i);
     return li;
   }
+  // A user row (who to follow, fans also like, followings): their userBadge, with a Follow button.
+  const userBadge = u => `<div class="userBadge m-horizontal${u.verified ? ' m-verified' : ''}"><div class="userBadge__avatar sc-mr-2x"><div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body">${link(u.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__lightOutline sc-artwork-6x sc-artwork image__rounded m-loaded">${artSpan((u.avatar_url || '').replace('-large.', '-t120x120.'), 'sc-artwork-6x image__rounded')}</div></div>`)}</div></div></div>
+      <div class="userBadge__content sc-media-content"><div class="userBadge__title"><h3 class="userBadge__username sc-type-light sc-link-primary sc-text-h4">${link(u.permalink, 'userBadge__usernameLink sc-link-dark sc-link-primary sc-truncate sc-mr-0.5x', `<span class="sc-truncate">${esc(u.username)}</span>`, `Visit ${u.username}’s profile`)}<div style="display:inline-block">${u.verified ? `<span class="verifiedBadge userBadge__verifiedBadge">${icon('verified')}</span>` : ''}</div></h3></div>
+        <div class="userBadge__meta"><div class="userBadge__stats sc-text-captions sc-mt-0.5x"><div aria-label="User stats" class="userStats"><ul class="sc-ministats-group">${ministat('sc-ministats-followers sc-link-secondary g-flex-row-centered', 'followers', u.followers_count, 'followers')}${ministat('sc-ministats-sounds sc-link-secondary g-flex-row-centered', 'sounds', u.track_count, 'tracks')}</ul></div></div></div></div>
+      <div class="userBadge__actions"><button type="button" data-follow="${u.id}" class="sc-button-follow sc-button sc-button-medium sc-button-cta sc-button-primary${followingIds.has(u.id) ? ' sc-button-selected' : ''}" title="Follow"><span class="sc-button-label">${followingIds.has(u.id) ? 'Following' : 'Follow'}</span></button></div></div>`;
   // "Artists you should follow": three at a time from a fetched list; refetched when it runs out.
   const wtf = { list: [], at: 0, next: null };
   async function paintWhoToFollow(refresh) {
@@ -864,10 +879,7 @@
       wtf.list = (page.collection || []).map(x => x.user || x).filter(u => u?.username);
       wtf.next = page.next_href; wtf.at = 0;
     }
-    ul.innerHTML = wtf.list.slice(wtf.at, wtf.at + 3).map(u => `<li class="userSuggestionList__item"><div class="userSuggestion"><div class="userBadge m-horizontal${u.verified ? ' m-verified' : ''}"><div class="userBadge__avatar sc-mr-2x"><div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body">${link(u.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__lightOutline sc-artwork-6x sc-artwork image__rounded m-loaded">${artSpan((u.avatar_url || '').replace('-large.', '-t120x120.'), 'sc-artwork-6x image__rounded')}</div></div>`)}</div></div></div>
-      <div class="userBadge__content sc-media-content"><div class="userBadge__title"><h3 class="userBadge__username sc-type-light sc-link-primary sc-text-h4">${link(u.permalink, 'userBadge__usernameLink sc-link-dark sc-link-primary sc-truncate sc-mr-0.5x', `<span class="sc-truncate">${esc(u.username)}</span>`, `Visit ${u.username}’s profile`)}<div style="display:inline-block">${u.verified ? `<span class="verifiedBadge userBadge__verifiedBadge">${icon('verified')}</span>` : ''}</div></h3></div>
-        <div class="userBadge__meta"><div class="userBadge__stats sc-text-captions sc-mt-0.5x"><div aria-label="User stats" class="userStats"><ul class="sc-ministats-group">${ministat('sc-ministats-followers sc-link-secondary g-flex-row-centered', 'followers', u.followers_count, 'followers')}${ministat('sc-ministats-sounds sc-link-secondary g-flex-row-centered', 'sounds', u.track_count, 'tracks')}</ul></div></div></div></div>
-      <div class="userBadge__actions"><button type="button" data-follow="${u.id}" class="sc-button-follow sc-button sc-button-medium sc-button-cta sc-button-primary${followingIds.has(u.id) ? ' sc-button-selected' : ''}" title="Follow"><span class="sc-button-label">${followingIds.has(u.id) ? 'Following' : 'Follow'}</span></button></div></div></div></li>`).join('');
+    ul.innerHTML = wtf.list.slice(wtf.at, wtf.at + 3).map(u => `<li class="userSuggestionList__item"><div class="userSuggestion">${userBadge(u)}</div></li>`).join('');
   }
   // Plays an artist's new tracks (the "stories" behind their New tracks avatar).
   async function playArtistShortcut(urn) {
@@ -937,22 +949,66 @@
 
   // ---- Profiles (/<user>[/tab])
   const PROFILE_TABS = [['', 'All'], ['popular-tracks', 'Popular tracks'], ['tracks', 'Tracks'], ['albums', 'Albums'], ['sets', 'Playlists'], ['reposts', 'Reposts']];
+  // Their followers, following, likes and comments lists and the vinyl store: SoundCloud's own pages, framed.
+  const PROFILE_EMBED_TABS = new Set(['followers', 'following', 'likes', 'comments', 'vinyl-store']);
+  // Profile stats: exact below 10K, then cut (not rounded) to one decimal, as SoundCloud does (75,997 is 75.9K).
+  const statNum = n => n >= 1e6 ? Math.floor(n / 1e5) / 10 + 'M' : n >= 1e4 ? Math.floor(n / 100) / 10 + 'K' : (n || 0).toLocaleString();
+  // The right column: stats and web links, then the modules SoundCloud shows that have something in them.
+  async function renderProfileSidebar(u, token) {
+    const side = $('profSidebar'), own = u.id === me.id, pre = u.permalink + '/';
+    const mod = (cls, inner) => `<article class="sidebarModule g-all-transitions-200-linear ${cls}">${inner}</article>`;
+    const stat = ([label, path, n, title], k) => `<td class="infoStats__stat${k < 2 ? ' sc-link-light sc-border-light-right' : ''}">${link(pre + path, 'infoStats__statLink sc-link-light sc-link-primary', `<h3 class="infoStats__title sc-font-light sc-text-secondary">${label}</h3><div class="infoStats__value sc-font-light">${statNum(n)}</div>`, title)}</td>`;
+    side.innerHTML = `<article class="infoStats"><table class="infoStats__table sc-type-small sc-text-body"><tbody><tr>${[['Followers', 'followers', u.followers_count, `${(u.followers_count || 0).toLocaleString()} followers`], ['Following', 'following', u.followings_count, `Following ${(u.followings_count || 0).toLocaleString()} people`], ['Tracks', 'tracks', u.track_count, `${(u.track_count || 0).toLocaleString()} tracks`]].map(stat).join('')}</tr></tbody></table><div class="web-profiles"><ul class="sc-list-nostyle sc-clearfix" id="webProfiles"></ul></div></article>`;
+    const none = { collection: [] };
+    const [web, likes, related, followings, followers, comments] = await Promise.all([
+      api(`/users/soundcloud:users:${u.id}/web-profiles`).catch(() => []),
+      u.likes_count ? api(`/users/${u.id}/track_likes`, { limit: 3 }).catch(() => none) : none,
+      api(`/users/${u.id}/relatedartists`, { limit: 21 }).catch(() => none),
+      u.followings_count ? api(`/users/${u.id}/followings`, { limit: 3 }).catch(() => none) : none,
+      !own && u.followers_count ? api(`/users/${u.id}/followers`, { limit: 9 }).catch(() => none) : none,
+      api(`/users/${u.id}/comments`, { limit: 3 }).catch(() => none),
+    ]);
+    if (token !== viewToken) return;
+    $('webProfiles').innerHTML = web.map(w => `<li class="web-profiles__item"><div class="sc-truncate"><a href="${esc(w.url)}" data-external="${esc(w.url)}" rel="me nofollow ugc" class="web-profile sc-link-light sc-link-secondary sc-social-logo-interactive sc-text-h4"><div style="display:inline-block;width:16px;height:16px;vertical-align:top;margin-right:8px;margin-top:2px">${icon('net_' + w.network) || icon('net_personal')}</div> ${esc(w.title || w.url)} </a></div></li>`).join('');
+    const rel = { list: related.collection.filter(x => x.username), at: 0 };
+    const paintRelated = () => { $('relatedList').innerHTML = rel.list.slice(rel.at, rel.at + 3).map(x => `<li class="usersList__item">${userBadge(x)}</li>`).join(''); };
+    const userList = (cls, list, item) => `<div class="sidebarContent"><div class="usersList ${cls} lazyLoadingList"><ul class="usersList__list lazyLoadingList__list sc-list-nostyle">${list.map(x => `<li class="usersList__item">${item(x)}</li>`).join('')}</ul></div></div>`;
+    const likeTracks = likes.collection.map(l => l.track).filter(Boolean);
+    side.insertAdjacentHTML('beforeend',
+      (likeTracks.length ? mod('likesModule', sidebarHeader(`${(u.likes_count || 0).toLocaleString()} likes`, 'View all', pre + 'likes') + '<div class="sidebarContent"><div class="soundBadgeList compact lazyLoadingList"><ul class="sc-list-nostyle sc-clearfix" id="profLikes"></ul></div></div>') : '')
+      + (rel.list.length ? mod('relatedArtistsModule', sidebarHeader('Fans also like', 'Refresh').replace('sidebar__moreLink', 'sidebar__moreLink refresh-ra') + '<div class="sidebarContent"><div class="usersList user-badge lazyLoadingList"><ul class="usersList__list lazyLoadingList__list sc-list-nostyle" id="relatedList"></ul></div></div>') : '')
+      + (followers.collection.length ? mod('followersModule', sidebarHeader(`${statNum(u.followers_count)} followers`, 'View all', pre + 'followers') + userList('floating user-avatar-badge-hover', followers.collection, x => `<div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body">${link(x.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__whiteOutline sc-artwork-6x sc-artwork image__rounded m-loaded">${artSpan((x.avatar_url || '').replace('-large.', '-t120x120.'), 'sc-artwork-6x image__rounded')}</div></div>`, x.username)}</div></div>`)) : '')
+      + (followings.collection.length ? mod('followingsModule', sidebarHeader(`${(u.followings_count || 0).toLocaleString()} following`, 'View all', pre + 'following') + userList('user-badge', followings.collection, userBadge)) : '')
+      + (comments.collection.some(c => c.track) ? mod('commentsModule', sidebarHeader('Latest Comments', 'View all', pre + 'comments') + `<div class="sidebarContent"><div class="commentBadgeList"><ul class="sc-list-nostyle sc-clearfix">${comments.collection.filter(c => c.track).map(c => `<li class="commentBadgeList__item sc-border-light-top sc-py-1x sc-px-2x sc-text-body"><div class="commentBadge"><div class="commentBadge__title sc-text-secondary sc-mb-1x"><div>on ${link(trackPath(c.track), 'sc-link-light sc-link-primary', esc(c.track.title))}</div></div><div class="commentBadge__body">${esc(c.body)}</div><span class="commentBadge__time sc-text-light sc-text-secondary">${timeTag(c.created_at)}</span></div></li>`).join('')}</ul></div></div>`) : ''));
+    side.querySelectorAll('[data-external]').forEach(a => a.onclick = e => { e.preventDefault(); window.ipc?.postMessage('open:' + a.dataset.external); });
+    if ($('relatedList')) {
+      paintRelated();
+      side.querySelector('.refresh-ra').onclick = e => { e.preventDefault(); rel.at = rel.at + 3 < rel.list.length ? rel.at + 3 : 0; paintRelated(); }; // Note: cycles the fetched 21, no refetch
+    }
+    if ($('profLikes')) $('profLikes').append(...addTracks(likeTracks, true).map(([t, i]) => soundBadge(t, i, 'soundBadgeList__item')));
+    markPlaying();
+  }
   async function viewProfile(permalink, tab, token) {
+    if (PROFILE_EMBED_TABS.has(tab)) return viewEmbed(permalink + '/' + tab, token);
     const u = await api('/resolve', { url: 'https://soundcloud.com/' + permalink });
     if (token !== viewToken) return;
     if (u.kind !== 'user') throw new Error('Not a profile: ' + permalink);
     const banner = u.visuals?.visuals?.[0]?.visual_url;
-    const following = followingIds.has(u.id);
-    const tabs = PROFILE_TABS.map(([k, label]) => `<li class="g-tabs-item">${link(permalink + (k ? '/' + k : ''), 'g-tabs-link' + (k === tab ? ' active' : ''), label)}</li>`).join('');
+    const following = followingIds.has(u.id), own = u.id === me.id;
+    // Note: the Vinyl tab shows on your own profile only; SoundCloud's rule for it isn't in api-v2's user.
+    const tabs = [...PROFILE_TABS, ...(own ? [['vinyl-store', 'Vinyl']] : [])].map(([k, label]) => `<li class="g-tabs-item">${link(permalink + (k ? '/' + k : ''), 'g-tabs-link' + (k === tab ? ' active' : ''), label)}</li>`).join('');
     $('content').innerHTML = `<div><div class="l-user-hero sc-px-2x"><div class="profileHeader"><div class="profileHeader__info"><div class="profileHeaderInfo sc-media">
         <div class="profileHeaderInfo__avatar sc-media-image sc-mr-4x"><div class="image image__noOutline sc-artwork image__rounded m-loaded" style="height:198px;width:198px"><span style="background-image:url(${esc((u.avatar_url || '').replace('-large.', '-t500x500.'))});width:198px;height:198px;opacity:1" class="sc-artwork image__rounded image__full"></span></div></div>
         <div class="profileHeaderInfo__content sc-media-content"><h2 class="profileHeaderInfo__userName g-type-shrinkwrap-block g-type-shrinkwrap-large-primary sc-text-h1 theme-dark">${esc(u.username)}${u.verified ? `<div style="display:inline-block"><span class="verifiedBadge profileHeaderInfo__verifiedBadge sc-ml-1x theme-light">${icon('verified')}</span></div>` : ''}</h2>
           ${[u.full_name, [u.city, u.country_code].filter(Boolean).join(', ')].filter(Boolean).map(t => `<h3 class="profileHeaderInfo__additional g-type-shrinkwrap-block g-type-shrinkwrap-large-secondary sc-mt-1x">${esc(t)}</h3>`).join('')}</div></div></div>
       <div class="profileHeaderBackground" style="${banner ? `background:url(${esc(banner)}) center/cover` : 'background:linear-gradient(315deg,#8a8f8c 0%,#2e2f2c 100%)'}"></div></div></div>
       <div class="l-vertical-bar"><div class="userInfoBar sc-px-2x"><div class="userInfoBar__tabs"><ul class="profileTabs g-tabs g-tabs-medium">${tabs}</ul></div>
-        <div class="userInfoBar__buttons"><div class="sc-button-group">${u.id === me.id ? '' : `<button type="button" data-follow="${u.id}" class="sc-button-follow sc-button sc-button-medium sc-button-responsive ${following ? 'sc-button-selected sc-button-secondary' : 'sc-button-cta sc-button-primary'}"><span class="sc-button-label">${following ? 'Following' : 'Follow'}</span></button>`}<button type="button" data-copy="${esc(u.permalink_url)}" class="sc-button-share sc-button-secondary sc-button sc-button-medium sc-button-responsive"><span class="sc-button-label">Copy link</span></button></div></div></div></div>
-      <div class="l-fluid-fixed"><div class="l-main sc-px-2x"><p class="sc-text-secondary sc-py-2x">${count(u.followers_count)} followers · ${count(u.followings_count)} following · ${count(u.track_count)} tracks</p>
-        <div class="userMain__content lazyLoadingList">${tab === 'albums' || tab === 'sets' ? '<div class="badgeList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="plist"></ul></div>' : '<ul class="soundList sc-list-nostyle" id="plist"></ul>'}<div class="lazyLoadingList__sentinel"></div></div></div></div></div>`;
+        <div class="userInfoBar__buttons"><div class="sc-button-group">${u.station_permalink ? link('discover/sets/' + u.station_permalink, 'sc-button-startstation sc-button-secondary sc-button sc-button-medium sc-button-responsive', `<div>${icon('profStation') || icon('station')}</div><span class="sc-button-label">Station</span>`, 'Go to station') : ''}${own ? '' : `<button type="button" data-follow="${u.id}" class="sc-button-follow sc-button sc-button-medium sc-button-responsive sc-button-cta sc-button-primary${following ? ' sc-button-selected' : ''}" title="Follow"><div>${icon('follow')}</div><span class="sc-button-label">${following ? 'Following' : 'Follow'}</span></button>`}<button type="button" id="profShare" class="sc-button-share sc-button-secondary sc-button sc-button-medium sc-button-responsive" title="Share"><div>${icon('share')}</div><span class="sc-button-label">Share</span></button>${own ? `<button type="button" id="profEdit" class="sc-button-edit editProfileButton sc-button-secondary sc-button sc-button-medium sc-button-responsive" title="Edit"><div>${icon('edit')}</div><span class="sc-button-label">Edit</span></button>` : link('messages/' + u.id, 'sc-button-secondary sc-button sc-button-medium sc-button-icon sc-button-responsive sc-button-message', `<div>${icon('message') || icon('envelope')}</div><span class="sc-button-label sc-visuallyhidden">Message</span>`, 'Send a message')}</div></div></div></div>
+      <div class="l-fluid-fixed"><div class="l-main l-user-main sc-border-light-right"><div class="userMain"><div class="userMain__content"><div class="userStream lazyLoadingList">
+        ${tab === '' ? '<h3 class="userstream__header sc-px-2x sc-py-1x sc-mt-2x sc-text-h2">Recent</h3>' : ''}<div class="userStream__list">${tab === 'albums' || tab === 'sets' ? '<div class="badgeList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="plist"></ul></div>' : '<ul class="soundList sc-list-nostyle" id="plist"></ul>'}</div><div class="lazyLoadingList__sentinel"></div></div></div></div></div>
+        <div class="l-sidebar-right l-user-sidebar-right"><div class="userSidebar sc-clearfix" id="profSidebar"></div></div></div></div>`;
+    $('profShare').onclick = () => openShare(u);
+    if (own) $('profEdit').onclick = () => window.ipc?.postMessage('open:' + u.permalink_url); // their Edit dialog lives on soundcloud.com
     const list = $('plist');
     const fromStream = (page, first) => {
       const items = page.collection.filter(x => x.track && (x.type || 'track').startsWith('track'));
@@ -969,6 +1025,7 @@
       sets: [`/users/${id}/playlists_without_albums`, page => list.append(...page.collection.map(playlistTile))],
     }[tab] || [`/stream/users/${id}`, fromStream];
     await paged(token, url, { limit: 20 }, render);
+    renderProfileSidebar(u, token).catch(e => status('Error: ' + e.message)); // after the first page, which replaces the queue its likes point into
     return { title: u.username };
   }
 
@@ -1148,8 +1205,8 @@
   // ---- SoundCloud's own pages for what we don't rebuild, in a same-origin
   // frame. Our router keeps back/forward: the frame's own navigation is
   // followed, and a page we have a view for comes back to ours.
-  const EMBED = /^(upload|artists|settings|you\/subscriptions|you\/insights|people|pages|signin|logout)(\/|$)/;
-  const EMBED_TITLES = { upload: 'Upload', artists: 'Artist Studio', settings: 'Settings', 'you/subscriptions': 'Subscription', 'you/insights': 'Insights', people: 'Who to follow', signin: 'Sign in', logout: 'Sign out' };
+  const EMBED = /^(upload|artists|settings|you\/subscriptions|you\/insights|people|pages|tags|signin|logout)(\/|$)/;
+  const EMBED_TITLES = { upload: 'Upload', artists: 'Artist', settings: 'Settings', 'you/subscriptions': 'Subscription', 'you/insights': 'Insights', people: 'Who to follow', tags: 'Tags', signin: 'Sign in', logout: 'Sign out' };
   const frameMedia = new Set(); // media their page has played, paused when ours plays
   // Per page loaded in the frame: hide their header and player, and pause our
   // player when theirs starts (only one plays at a time).
@@ -1157,7 +1214,7 @@
     if (w.__pocPrep || !w.document.documentElement) return;
     w.__pocPrep = true;
     const st = w.document.createElement('style');
-    st.textContent = 'header.header, .playControls, .l-footer { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; }';
+    st.textContent = 'header.header, .playControls, .l-footer, .l-product-banners { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; }';
     w.document.documentElement.appendChild(st);
     const P = w.HTMLMediaElement.prototype, play = P.play;
     P.play = function () { frameMedia.add(this); audio.pause(); return play.apply(this, arguments); };
@@ -1192,8 +1249,105 @@
     return { title: EMBED_TITLES[top] || 'SoundCloud', nav: '' };
   }
 
+  // ---- Track pages: SoundCloud's own current track page (their Next.js app
+  // under /n/), framed with the URL soundcloud.com's shell gives its
+  // iframe.webiIframe and driven over the shell's postMessage protocol, so the
+  // page's play button, waveform and links run our player and our router.
+  let webiFrame = null, webiReady = false, webiBusy = null;
+  const toWebi = m => { if (webiReady && webiFrame?.isConnected) webiFrame.contentWindow.postMessage(m, location.origin); };
+  const urnId = urn => Number(String(urn).split(':').pop());
+  const themeName = () => document.body.classList.contains('theme-light') ? 'light' : 'dark';
+  // What the shell's playback sync sends: the current track, then its state.
+  function webiTrack() {
+    const t = current();
+    toWebi({ kind: 'set-current-track', source: null, track: t ? { urn: t.urn || 'soundcloud:tracks:' + t.id, fullDuration: t.full_duration ?? t.duration ?? 0, permalinkUrl: t.permalink_url || '', title: t.title || '', artworkUrl: t.artwork_url || null, user: { username: t.user?.username || '', permalinkUrl: t.user?.permalink_url || '' } } : null });
+  }
+  function webiState() {
+    const going = !audio.paused && !audio.ended, ready = audio.readyState >= 3 && !audio.seeking;
+    // Their page runs the clock itself from playbackPosition + lastUpdate while isActuallyPlaying.
+    toWebi({ kind: 'sync-playback-state', playbackState: { isPlayable: true, isLoading: going && !ready, isPlaying: going, isActuallyPlaying: going && ready, playbackPosition: (seekPending ?? audio.currentTime) * 1000, isMuted: audio.muted, volume: audio.volume, lastUpdate: Date.now() } });
+  }
+  for (const ev of ['play', 'pause', 'playing', 'waiting', 'seeking', 'seeked', 'ended', 'timeupdate', 'volumechange']) audio.addEventListener(ev, webiState);
+  async function webiPlay(m) {
+    const id = urnId(m.trackUrn);
+    if (current()?.id === id) return audio.play();
+    let i = queue.findIndex(t => t.id === id);
+    if (i < 0) {
+      const [t] = await api('/tracks', { ids: id, ...(m.secret_token && { secret_token: m.secret_token }) });
+      if (!t) return status('Couldn’t load that track');
+      i = addTracks([t], true)[0][1];
+    }
+    return play(i);
+  }
+  // A playlist or album from their page: its tracks, starting at the one clicked.
+  async function webiPlaySource(m) {
+    const urn = m.source?.urn || '', sys = urn.includes('system-playlists');
+    const p = await api(sys ? `/system-playlists/${urn}` : `/playlists/${urnId(urn)}`);
+    const tracks = await fullTracks(p.tracks || []);
+    const start = m.startTrack ? urnId(m.startTrack.trackUrn) : null;
+    return playList(tracks, null, Math.max(0, tracks.findIndex(t => t.id === start)));
+  }
+  const KEYCODES = { 32: ' ', 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight', 40: 'ArrowDown' };
+  window.addEventListener('message', e => {
+    if (!webiFrame || e.source !== webiFrame.contentWindow || e.origin !== location.origin) return;
+    const m = e.data || {};
+    switch (m.kind) {
+      case 'ready': webiReady = true; webiTrack(); webiState(); break;
+      case 'play': audio.play(); break;
+      case 'pause': audio.pause(); break;
+      // A click on the waveform of a track that isn't playing yet sends
+      // play-track-urn, then seek: seek once that track has loaded.
+      case 'seek': {
+        const seek = () => audio.duration && seekTo(m.time / 1000 / audio.duration);
+        if (webiBusy) webiBusy.then(() => audio.readyState ? seek() : audio.addEventListener('loadedmetadata', seek, { once: true })); else seek();
+        break;
+      }
+      case 'play-track-urn': { const p = webiBusy = webiPlay(m).catch(err => status('Error: ' + err.message)).finally(() => { if (webiBusy === p) webiBusy = null; }); break; }
+      case 'play-source': webiPlaySource(m).catch(err => status('Error: ' + err.message)); break;
+      case 'adjust-volume': setVolume(m.volume); break;
+      case 'set-muted': audio.muted = !!m.muted; break;
+      case 'add-to-next-up': api('/tracks', { ids: urnId(m.trackUrn) }).then(addNext); break;
+      case 'open-add-to-playlist': api('/tracks', { ids: urnId(m.trackUrns[0]) }).then(([t]) => t && openAddToPlaylist(t)); break;
+      case 'open-share-modal': if (m.resourceType === 'sound') api('/tracks', { ids: urnId(m.resourceUrn) }).then(([t]) => t && copyLink(t.permalink_url)).then(() => status('Link copied')); break;
+      case 'send-new-message': go('messages/' + urnId(m.recipientUrn)); break;
+      // Their page already made the request; keep our own buttons in step.
+      case 'modify-relationship': {
+        const set = { 'sound-likes': likedIds, 'sound-reposts': repostedIds, followings: followingIds }[m.relationship];
+        if (set) { m.value ? set.add(urnId(m.targetUrn)) : set.delete(urnId(m.targetUrn)); paintSocial(); }
+        break;
+      }
+      // Keys pressed in their page are ours (space, arrows, digits, letters).
+      case 'forward-keydown': document.dispatchEvent(new KeyboardEvent('keydown', { key: KEYCODES[m.keyCode] || String.fromCharCode(m.keyCode).toLowerCase(), shiftKey: !!m.shiftKey, cancelable: true })); break;
+      case 'navigate': {
+        const u = new URL(m.href, location.origin);
+        if (m.openInNewTab || u.origin !== location.origin) return window.ipc?.postMessage('open:' + u.href);
+        const path = decodeURIComponent(u.pathname.slice(1)) + u.search;
+        if (path === pathNow()) return;
+        if (m.replace) { navStack[navIndex] = path; route(); } else go(path);
+      }
+    }
+  });
+  async function viewTrackPage(path, token) {
+    const p = path.split('?')[0];
+    webiReady = false;
+    $('content').innerHTML = `<iframe class="pocEmbed" title="SoundCloud" allow="clipboard-write" src="/n/${esc(p)}?crossfade=true&v2_layout=true&embedded=crossfade&webi_embed_id=${crypto.randomUUID()}&theme=${themeName()}"></iframe>`;
+    $('content').style.setProperty('--poc-player', $('playControls').offsetHeight + 'px');
+    const f = webiFrame = $('content').firstElementChild;
+    f.addEventListener('load', () => { try { prepFrame(f.contentWindow); } catch {} });
+    // The queue, as on SoundCloud: this track, then its related tracks.
+    const t = await api('/resolve', { url: 'https://soundcloud.com/' + p });
+    if (token !== viewToken) return;
+    if (t.kind !== 'track') throw new Error('Not a track: ' + path);
+    const related = await api(`/tracks/${t.id}/related`, { limit: 20 }).catch(() => ({ collection: [] }));
+    if (token !== viewToken) return;
+    addTracks([t, ...related.collection]);
+    // Their page never came up (blocked, signed out of it, offline): our own view.
+    setTimeout(() => { if (token === viewToken && f.isConnected && !webiReady) viewTrack(p, token).catch(() => {}); }, 15000);
+    return { title: t.title };
+  }
+
   // Page title for the title bar pill, and which header tab is selected.
-  const PROFILE_TAB_KEYS = new Set(PROFILE_TABS.map(([k]) => k).filter(Boolean));
+  const PROFILE_TAB_KEYS = new Set([...PROFILE_TABS.map(([k]) => k).filter(Boolean), ...PROFILE_EMBED_TABS]);
   async function render(path) {
     const token = ++viewToken;
     const [p, qs] = path.split('?');
@@ -1209,7 +1363,9 @@
     if (parts[0] === 'you') { const tab = parts[1] || 'library'; await viewLibrary(tab, token); return { title: 'Library', nav: 'library' }; }
     if (parts[1] === 'sets' && parts[2]) return { ...(await viewSet(p, token)), nav: '' };
     if (parts.length === 1 || PROFILE_TAB_KEYS.has(parts[1])) return { ...(await viewProfile(parts[0], parts[1] || '', token)), nav: '' };
-    return { ...(await viewTrack(p, token)), nav: '' };
+    // A track's likes, reposts, related and sets lists: SoundCloud's own pages.
+    if (parts.length > 2 && !/^s-/.test(parts[2])) return viewEmbed(path, token);
+    return { ...(await viewTrackPage(p, token)), nav: '' };
   }
 
   // Like / repost / follow / copy-link / more buttons, by delegation.
@@ -1334,8 +1490,10 @@
       ['M', 'Mute/Unmute'], ['L', 'Like'], ['R', 'Repost'], ['Q', 'Show Next up'], ['H', 'Keyboard shortcuts'], ['⌘[ / ⌘]', 'Back/Forward'], ['⌘R', 'Reload page'], ['⌘F', 'Search'], ['⌘,', 'App settings']];
     openModal(['Keyboard shortcuts'], `<table class="sc-text-body" style="width:100%;border-spacing:0 8px">${rows.map(([k, v]) => `<tr><td style="width:40%"><kbd class="sc-text-h4">${k}</kbd></td><td class="sc-text-secondary">${v}</td></tr>`).join('')}</table>`);
   }
-  for (const [id, open] of [['me', openUserMenu], ['bell', openNotifications], ['envelope', openMessages], ['moreBtn', openMoreMenu]])
+  for (const [id, open] of [['me', openUserMenu], ['bell', openNotifications], ['envelope', openMessages], ['moreBtn', openMoreMenu]]) {
     $(id).onclick = e => { e.preventDefault(); if (me) Promise.resolve(open(e.currentTarget)).catch(err => status('Error: ' + err.message)); };
+    $(id).onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); e.currentTarget.click(); } };
+  }
 
   // --- Modals (Share, Add to Playlist) in SoundCloud's modal shell.
   let modalEl = null;
@@ -1517,7 +1675,11 @@
     $('badgeUser').textContent = t.user?.username || '';
     $('badgeTitle').firstElementChild.textContent = t.title;
     $('badgeTitle').title = t.title;
+    // Like SoundCloud: artwork and title open the track, the name the artist.
+    $('badgeTitle').dataset.href = $('badgeArt').closest('a').dataset.href = trackPath(t);
+    $('badgeUser').dataset.href = t.user?.permalink || '';
     paintSocial();
+    webiTrack();
   }
   // Paints every like/repost/follow button on screen from the id sets.
   function paintSocial() {
@@ -1711,7 +1873,8 @@
     const a = e.target.closest('a');
     if (!a || e.defaultPrevented) return;
     e.preventDefault();
-    if (a.dataset.href !== undefined && a.dataset.href !== 'undefined') go(a.dataset.href);
+    // An empty path would open Home; a link without a target does nothing instead.
+    if (a.dataset.href && a.dataset.href !== 'undefined') go(a.dataset.href);
   });
 
   // --- Navigation: our own back/forward list. WebKit keeps no history for a
@@ -1772,6 +1935,7 @@
     const dark = settings.theme === 'system' ? darkQuery.matches : settings.theme !== 'light';
     document.body.classList.toggle('theme-dark', dark);
     document.body.classList.toggle('theme-light', !dark);
+    toWebi({ kind: 'set-theme', theme: themeName() });
   }
   darkQuery.addEventListener('change', applySettings);
   for (const el of document.querySelectorAll('[data-setting]')) {
