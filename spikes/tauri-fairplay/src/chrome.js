@@ -26,6 +26,11 @@
     #gritter-notice-wrapper { top: 92px !important; }
     .fullScreenOverlay, .webiIframe.webiIframeV2Layout.fullScreen { top: 32px !important; height: auto !important; bottom: 0 !important; }
     .headerMenu.moreMenu, .headerMenu.profileMenu { max-height: calc(100vh - 78px) !important; }
+    /* The avatar menu is the account menu: no Artist Pro/Benefits/Distribute,
+       and Support/Subscription/Settings/Sign out move into it from the more menu (see below). */
+    .profileMenu li:has(a[href*="checkout.soundcloud.com"], a[href*="artists.soundcloud.com"]),
+    .moreMenu li:has(a[href^="https://help.soundcloud.com"]), .moreMenu ul:has(a[href="/logout"]) { display: none !important; }
+    .pocAccount .headerMenu__link::before { content: ''; width: 24px; flex: none; } /* the icon column */
     /* Our bar has the search; Artist Studio is "Artist" (see below); no chevron by the avatar. */
     header.header .header__search, .header__userNavUsernameButtonIcon { display: none !important; }
     /* SoundCloud's header is at least 960 px wide; in a narrower window the
@@ -68,6 +73,19 @@
     .pocTitlebar .pocSearch { display: flex; align-items: center; gap: 6px; width: 198px; min-width: 80px; flex: 0 1 198px; height: 22px; margin: 0 8px 0 0; padding: 0 8px; border-radius: 6px; background: var(--poc-hover); }
     .pocTitlebar .pocSearch input { flex: 1; min-width: 0; height: auto; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; }
     .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
+    .pocTitlebar .pocSearch { position: relative; }
+    .pocSuggest { display: none; position: absolute; top: 28px; right: 0; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 4px 0; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: #1a1a1a; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); font: 13px Söhne, system-ui, -apple-system, 'Segoe UI', sans-serif; /* SoundCloud's own font */ cursor: default; }
+    html.theme-light .pocSuggest { border-color: rgba(0, 0, 0, .12); background: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
+    .pocSuggest.open { display: block; }
+    .pocSuggestHead { padding: 10px 12px 4px; font-weight: 600; line-height: 1.2; opacity: .65; }
+    .pocSuggestRow { display: flex; align-items: center; gap: 10px; padding: 5px 12px; color: inherit !important; text-decoration: none !important; }
+    .pocSuggestRow:hover, .pocSuggestRow.active { background: var(--poc-hover); }
+    .pocSuggestRow img { flex: none; width: 32px; height: 32px; border-radius: 3px; object-fit: cover; background: var(--poc-hover); }
+    .pocSuggestRow img.round { border-radius: 50%; }
+    .pocSuggestIcon { flex: none; width: 32px; height: 16px; background: currentColor; opacity: .5; -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" stroke="black" stroke-width="1.5" fill="none"/><path d="M10.5 10.5 14 14" stroke="black" stroke-width="1.5" stroke-linecap="round"/></svg>') center / 16px no-repeat; }
+    .pocSuggestText { display: flex; flex-direction: column; min-width: 0; }
+    .pocSuggestTitle, .pocSuggestSub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .pocSuggestSub { font-size: 12px; opacity: .6; }
     /* Windows (Electron header's platform-win32 layout): no traffic lights;
        window buttons at the far right of a frameless window, resized from its edges. */
     .pocTitlebar .window-controls, .pocEdge { display: none; }
@@ -304,6 +322,113 @@
       if (q) go('/search?q=' + encodeURIComponent(q));
     });
     search.q.addEventListener('keydown', e => { if (e.key === 'Escape') search.q.blur(); });
+
+    // --- Suggestions while typing: matches in your own library first (likes,
+    // your tracks, liked and created playlists, followings, reposts), then
+    // SoundCloud's results and query suggestions, as its own search box does.
+    const apiGet = async path => {
+      const cid = window.__sc_hydration?.find(x => x.hydratable === 'apiClient')?.data?.id;
+      const tok = document.cookie.split('; ').find(c => c.startsWith('oauth_token='))?.slice(12);
+      const u = new URL(path, 'https://api-v2.soundcloud.com/');
+      if (cid) u.searchParams.set('client_id', cid);
+      const r = await fetch(u, { headers: tok ? { Authorization: 'OAuth ' + tok } : {} });
+      if (!r.ok) throw new Error(u.pathname + ' ' + r.status);
+      return r.json();
+    };
+    const toItem = (o, src) => {
+      if (!o?.permalink_url) return null;
+      const user = o.kind === 'user';
+      return { title: user ? o.username : o.title, sub: [src, user ? '' : o.user?.username].filter(Boolean).join(' · '), user,
+        art: (o.artwork_url || o.avatar_url || o.user?.avatar_url || '').replace('-large.', '-t50x50.'), path: new URL(o.permalink_url).pathname };
+    };
+    const library = new Map(); // path -> item, filled in the background on first focus
+    let libraryAt = 0;
+    const loadLibrary = () => {
+      const me = window.__sc_hydration?.find(x => x.hydratable === 'meUser')?.data;
+      if (!me || Date.now() - libraryAt < 10 * 60e3) return;
+      libraryAt = Date.now();
+      const sources = [
+        [`users/${me.id}/tracks`, x => [x, 'Your track']],
+        [`users/${me.id}/playlists`, x => [x, x.is_album ? 'Your album' : 'Your playlist']],
+        ['me/library/all', x => [x.playlist || x.system_playlist, /like/.test(x.type) ? 'Liked' : 'Yours']],
+        [`users/${me.id}/track_likes`, x => [x.track, 'Liked']],
+        [`users/${me.id}/followings`, x => [x, 'Following']],
+        [`stream/users/${me.id}/reposts`, x => [x.track || x.playlist, 'Reposted']],
+      ];
+      for (const [path, pick] of sources) (async () => {
+        // Note: whole library in memory, capped at 50 pages (10k items) a source.
+        let next = path + '?limit=200&linked_partitioning=1';
+        for (let n = 0; next && n < 50; n++) {
+          const page = await apiGet(next).catch(() => null);
+          if (!page) return;
+          for (const x of page.collection || []) { const it = toItem(...pick(x)); if (it && !library.has(it.path)) library.set(it.path, it); }
+          next = page.next_href;
+          if (suggest.classList.contains('open')) renderSuggest();
+        }
+      })();
+    };
+    const matchLibrary = q => {
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean), out = [];
+      for (const it of library.values()) {
+        const t = it.title.toLowerCase(), hay = t + ' ' + it.sub.toLowerCase();
+        if (words.every(w => hay.includes(w))) out.push([t.startsWith(words[0]) ? 0 : t.includes(' ' + words[0]) ? 1 : 2, it]);
+      }
+      return out.sort((a, b) => a[0] - b[0]).slice(0, 6).map(x => x[1]);
+    };
+    const suggest = search.appendChild(Object.assign(document.createElement('div'), { className: 'pocSuggest', role: 'listbox' }));
+    let remote = { q: '', items: [], queries: [] }, remoteTimer, remoteSeq = 0;
+    const el = (tag, cls, text) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: text } : {});
+    const row = (path, title, sub, art, round) => {
+      const a = el('a', 'pocSuggestRow');
+      a.dataset.path = path;
+      a.append(art === null ? el('span', 'pocSuggestIcon') : Object.assign(el('img', round ? 'round' : ''), art ? { src: art } : {}));
+      const text = a.appendChild(el('span', 'pocSuggestText'));
+      text.append(el('span', 'pocSuggestTitle', title));
+      if (sub) text.append(el('span', 'pocSuggestSub', sub));
+      return a;
+    };
+    function renderSuggest() {
+      const q = search.q.value.trim();
+      suggest.replaceChildren();
+      if (!q) return suggest.classList.remove('open');
+      suggest.append(row('/search?q=' + encodeURIComponent(q), `Search for “${q}”`, '', null));
+      const mine = matchLibrary(q), seen = new Set(mine.map(it => it.path));
+      const section = (label, items) => { if (items.length) { suggest.append(el('div', 'pocSuggestHead', label)); items.forEach(it => suggest.append(it)); } };
+      section('In your library', mine.map(it => row(it.path, it.title, it.sub, it.art, it.user)));
+      if (remote.q === q) {
+        section('On SoundCloud', remote.items.filter(it => !seen.has(it.path)).map(it => row(it.path, it.title, it.sub, it.art, it.user)));
+        section('Suggestions', remote.queries.filter(s => s.toLowerCase() !== q.toLowerCase()).slice(0, 4).map(s => row('/search?q=' + encodeURIComponent(s), s, '', null)));
+      }
+      suggest.classList.add('open');
+    }
+    const fetchRemote = q => {
+      const seq = ++remoteSeq, e = encodeURIComponent(q);
+      Promise.all([apiGet(`search?q=${e}&limit=6`).catch(() => ({})), apiGet(`search/queries?q=${e}&limit=6`).catch(() => ({}))]).then(([r, s]) => {
+        if (seq !== remoteSeq) return;
+        remote = { q, items: (r.collection || []).map(o => toItem(o, o.kind === 'user' ? 'Profile' : o.kind === 'playlist' ? (o.is_album ? 'Album' : 'Playlist') : '')).filter(Boolean), queries: (s.collection || []).map(x => x.output) };
+        renderSuggest();
+      });
+    };
+    search.q.addEventListener('focus', () => { loadLibrary(); renderSuggest(); });
+    search.q.addEventListener('input', () => {
+      renderSuggest();
+      clearTimeout(remoteTimer);
+      const q = search.q.value.trim();
+      if (q) remoteTimer = setTimeout(() => fetchRemote(q), 150);
+    });
+    search.q.addEventListener('blur', () => suggest.classList.remove('open'));
+    search.q.addEventListener('keydown', e => {
+      const rows = [...suggest.querySelectorAll('.pocSuggestRow')], i = rows.findIndex(r => r.classList.contains('active'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        rows[i]?.classList.remove('active');
+        const n = rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - (i < 0 ? 0 : 1))) % rows.length];
+        n?.classList.add('active'); n?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter' && i >= 0) { e.preventDefault(); pickRow(rows[i]); }
+    });
+    const pickRow = r => { go(r.dataset.path); search.q.blur(); };
+    suggest.addEventListener('mousedown', e => e.preventDefault()); // keep the input's focus
+    suggest.addEventListener('click', e => { const r = e.target.closest('.pocSuggestRow'); if (r) pickRow(r); });
     // Typing in our fields must not reach SoundCloud's single-key shortcuts (L likes, R reposts…).
     for (const el of [bar, panel]) for (const t of ['keydown', 'keypress', 'keyup']) el.addEventListener(t, e => e.stopPropagation());
 
@@ -391,7 +516,31 @@
     let fitQueued = false;
     const queueFit = () => { if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTrackFrame(); }); } };
     addEventListener('resize', queueFit);
-    new MutationObserver(() => { renameArtist(); queueFit(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    // --- Avatar menu gets the account items from the more menu. They only
+    // exist while that menu is open, so each one opens it and clicks the real
+    // link: SoundCloud's own handlers (sign out especially) do the work.
+    const accountItems = [['Support', 'a[href^="https://help.soundcloud.com"]'], ['Subscription', 'a[href^="/you/subscriptions"]'], ['Settings', 'a[href="/settings"]'], ['Sign out', 'a[href="/logout"]']];
+    const viaMoreMenu = sel => {
+      document.querySelector('.header__userNavUsernameButton')?.click(); // close the avatar menu
+      document.querySelector('.header__moreButton')?.click();
+      let tries = 0;
+      const go = () => {
+        const a = document.querySelector('.moreMenu ' + sel);
+        if (a) a.click();
+        else if (++tries < 60) requestAnimationFrame(go);
+      };
+      go();
+    };
+    const mergeMenus = () => {
+      const menu = document.querySelector('.headerMenu.profileMenu');
+      if (!menu || menu.querySelector('.pocAccount')) return;
+      const ul = menu.appendChild(Object.assign(document.createElement('ul'), { className: 'headerMenu__list sc-list-nostyle pocAccount' }));
+      for (const [label, sel] of accountItems) {
+        const a = ul.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: 'headerMenu__link', href: '#', textContent: label }));
+        a.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); viaMoreMenu(sel); });
+      }
+    };
+    new MutationObserver(() => { renameArtist(); mergeMenus(); queueFit(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     renameArtist();
     queueFit();
 
