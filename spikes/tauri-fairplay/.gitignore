@@ -1,0 +1,3 @@
+target/
+*.log
+cmd*.js

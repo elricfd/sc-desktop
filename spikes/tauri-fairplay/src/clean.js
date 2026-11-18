@@ -1,0 +1,41 @@
+// Hide SoundCloud's promotions, "events near you", artist upsells and footer
+// clutter, and reject optional cookies. Ported from the Electron app's
+// applyThemeToContent (src/main.ts). Runs in every frame at document start.
+(() => {
+  const css = `
+    .banner.m-promotion, .sidebarModule.mobileApps, .velvetCakeModule { display: none !important; }
+    .l-footer { font-size: 0 !important; line-height: 0 !important; }
+    .l-footer > a { display: none !important; }
+    .l-footer .footer__localeSelector { font-size: 14px !important; line-height: 20px !important; margin-top: 0 !important; }
+    .header__upsellWrapper, .creatorSubscriptionsButton.header__creatorUpsell, .artistConnectItem.m-upsellNextPro,
+    .dropdownMenu [href*="checkout.soundcloud.com"], .dropdownMenu *:has(> svg.profileMenu__icon path[fill="#F50"]),
+    .spotlight:has(.spotlight__upsellBanner), .spotlight__upsellBanner, .spotlight__upsellCTA,
+    .sidebarContent:has(.velvetCakeIframe),
+    .artistConnectContainer .tileGallery__sliderPeekForward, .artistConnectContainer .tileGallery__sliderPeekBackward,
+    .MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }
+  `;
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.documentElement.appendChild(style);
+
+  // A sidebar module (same-origin iframe) that is nothing but a paywall goes
+  // entirely: hide its container in the parent page.
+  let container = null;
+  try { container = window.frameElement?.closest('.webiEmbeddedModuleContainer'); } catch {}
+  if (container) {
+    const check = () => { container.style.display = document.querySelector('svg[aria-label="Paywalled feature"]') ? 'none' : ''; };
+    new MutationObserver(check).observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // Opt out of every optional OneTrust cookie category (on by default).
+  // OneTrust loads late and remembers the choice, so later loads find nothing.
+  if (window.top === window) {
+    let tries = 0;
+    const timer = setInterval(() => {
+      const ready = window.OneTrust && typeof window.OnetrustActiveGroups === 'string';
+      if (!ready && ++tries < 60) return;
+      clearInterval(timer);
+      if (ready && /C000[2-4]/.test(window.OnetrustActiveGroups)) window.OneTrust.RejectAll();
+    }, 500);
+  }
+})();

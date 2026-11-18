@@ -1,0 +1,1414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SoundCloud</title>
+<!-- SoundCloud's own look, never copied into this file: their stylesheets are
+     linked at startup (URLs from soundcloud.com's HTML), and the component CSS
+     and icons their JS injects are collected from their own pages and cached
+     by the Rust side, which fills them in below at load. -->
+<style id="sc-styles">/*SC_STYLES*/</style>
+<style>
+  /* Only what SoundCloud's CSS doesn't cover for our markup. */
+  body { margin: 0; }
+  #app > .l-container.l-content { padding-top: 48px; padding-bottom: 60px; }
+  svg.ic { width: 100%; height: 100%; fill: currentColor; display: block; }
+  .soundList__item .sound__waveform canvas { width: 100%; height: 60px; display: block; cursor: pointer; }
+  .lazyLoadingList__sentinel { height: 1px; }
+  .playbackTimeline__progressWrapper, .volume__sliderWrapper { touch-action: none; }
+  /* SoundCloud's shuffle-on rule lives in a module our collected pages don't load. */
+  .playControls__shuffle .shuffleControl.m-shuffling, .playControls__shuffle .shuffleControl.m-shuffling svg { color: #f50; color: var(--special-color); }
+  /* SoundCloud's generic buttons align to the top; their player centres these
+     with a rule from a module our collected pages don't load. */
+  .playControls__elements > .playControls__control { align-self: center; }
+  /* Our "Next up" rows (SoundCloud's queue items aren't on the collected pages). */
+  .pocQueue__item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+  .pocQueue__item:hover, .pocQueue__item.m-playing { background: rgba(var(--primary-rgb), .08); }
+  .pocQueue__item img { width: 32px; height: 32px; border-radius: 2px; object-fit: cover; }
+  .pocQueue__meta { min-width: 0; flex: 1; }
+  .pocQueue__meta div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .queue__scrollable { overflow-y: auto !important; max-height: 420px; }
+  /* SoundCloud pins its sidebar with a computed top; sticky does the same. */
+  .l-sidebar-right .streamSidebar { position: sticky; top: 90px; }
+  .artistShortcutTile__button { cursor: pointer; }
+  /* Share modal (SoundCloud's share panel isn't on the collected pages). */
+  .pocShare { display: flex; gap: 8px; align-items: center; }
+  .pocShare input[readonly] { flex: 1; min-width: 0; }
+  .pocShare__at { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+  /* ---- Title bar: the Electron app's header (src/header/header.css), drawn in
+     the page under a transparent macOS title bar; the traffic lights sit in
+     the 80px on the left. ---- */
+  :root { --header-bg: #121212; --header-text: #ffffff; --header-accent: #ff5500; --hover-bg: rgba(255, 255, 255, 0.1); }
+  body.theme-light { --header-bg: #ffffff; --header-text: #333333; --hover-bg: rgba(0, 0, 0, 0.08); }
+  .pocTitlebar { position: fixed; top: 0; left: 0; right: 0; z-index: 10000; display: grid; grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr); align-items: center; height: 32px; background: var(--header-bg); color: var(--header-text); user-select: none; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 12px; }
+  .pocTitlebar .header-side, .pocTitlebar .header-center { display: flex; align-items: center; min-width: 0; height: 100%; }
+  .pocTitlebar .header-side:first-child { padding-left: 80px; }
+  .pocTitlebar .header-side:last-child { padding-right: 12px; }
+  .pocTitlebar .navigation-controls { display: flex; align-items: center; }
+  .pocTitlebar .navigation-controls.hidden { display: none; }
+  .pocTitlebar .nav-button { display: flex; align-items: center; justify-content: center; width: 32px; height: 24px; margin-right: 4px; border-radius: 4px; opacity: .7; transition: all .2s ease; color: var(--header-text); }
+  .pocTitlebar .nav-button:hover { opacity: 1; background: var(--hover-bg); }
+  .pocTitlebar .nav-button.disabled { opacity: .3; background: transparent; }
+  .pocTitlebar .nav-button.refreshing svg { animation: pocSpin 1s linear infinite; }
+  @keyframes pocSpin { to { transform: rotate(360deg); } }
+  .pocTitlebar .title-bar { align-self: stretch; flex: 1 1 16px; min-width: 16px; }
+  .pocTitlebar .tab-group { display: flex; align-items: center; height: 22px; padding: 2px; border-radius: 8px; background: var(--hover-bg); }
+  .pocTitlebar .tab { display: flex; align-items: center; gap: 6px; width: 320px; min-width: 150px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 6px; background: var(--hover-bg); overflow: hidden; }
+  .pocTitlebar .tab-icon { flex: none; width: 16px; height: 16px; }
+  .pocTitlebar .tab-icon svg { width: 16px; height: 16px; display: block; }
+  .pocTitlebar .tab-title, .pocTitlebar .tab-path { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+  .pocTitlebar .tab-title { flex: 0 1 auto; }
+  .pocTitlebar .tab-path { flex: 1 1 0; opacity: .5; }
+  .pocTitlebar .pocSearch { display: flex; align-items: center; gap: 6px; width: 264px; height: 22px; margin-right: 8px; padding: 0 8px; border-radius: 6px; background: var(--hover-bg); }
+  .pocTitlebar .pocSearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+  .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
+  .header.fixed { top: 32px !important; }
+  /* SoundCloud pins the search heading under its own header; ours sits lower. */
+  .l-search .l-fixed-top { position: static !important; }
+  #app > .l-container.l-content { padding-top: 80px; }
+
+  /* ---- Settings: the Electron app's panel (src/settings/settingsPanel.css),
+     scoped so its generic selectors don't touch SoundCloud's page. ---- */
+  .pocSettings { --bg-primary: #1a1a1a; --bg-secondary: #262626; --bg-hover: rgba(255, 255, 255, .08); --text-primary: #fff; --text-secondary: rgba(255, 255, 255, .6); --accent: #ff5500; --border: rgba(255, 255, 255, .1); --track: rgba(255, 255, 255, .2);
+    position: fixed; top: 32px; right: 0; bottom: 0; z-index: 10001; width: 420px; display: flex; flex-direction: column; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: var(--text-primary); background: var(--bg-primary); border-left: 1px solid var(--border); user-select: none; -webkit-font-smoothing: antialiased;
+    opacity: 0; transform: translateX(16px); pointer-events: none; transition: opacity .15s ease-out, transform .15s ease-out; }
+  body.theme-light .pocSettings { --bg-primary: #fff; --bg-secondary: #f3f3f3; --bg-hover: rgba(0, 0, 0, .06); --text-primary: #222; --text-secondary: rgba(0, 0, 0, .6); --border: rgba(0, 0, 0, .12); --track: rgba(0, 0, 0, .2); }
+  .pocSettings.visible { opacity: 1; transform: none; pointer-events: auto; }
+  .pocSettings * { box-sizing: border-box; margin: 0; padding: 0; }
+  .pocSettings .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 6px 20px; }
+  .pocSettings h1 { font-size: 18px; font-weight: 600; }
+  .pocSettings .close-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+  .pocSettings .close-btn:hover { background: var(--bg-hover); }
+  .pocSettings nav { display: flex; gap: 18px; padding: 8px 20px 0; border-bottom: 1px solid var(--border); }
+  .pocSettings nav button { padding: 6px 0 8px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-secondary); font: inherit; font-size: 14px; cursor: pointer; }
+  .pocSettings nav button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+  .pocSettings main { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 20px; }
+  .pocSettings section[hidden] { display: none; }
+  .pocSettings h2 { padding: 14px 0 6px; color: var(--text-secondary); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .pocSettings .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; min-height: 36px; padding: 6px 0; }
+  .pocSettings .row > span:first-child { flex: 1 1 10em; }
+  .pocSettings label.row { cursor: pointer; }
+  .pocSettings .hint { padding: 2px 0 6px; color: var(--text-secondary); font-size: 12px; }
+  .pocSettings .toggle { position: relative; flex: none; width: 36px; height: 20px; }
+  .pocSettings .toggle input { position: absolute; inset: 0; opacity: 0; }
+  .pocSettings .slider { position: absolute; inset: 0; border-radius: 10px; background: var(--track); cursor: pointer; transition: background .15s; }
+  .pocSettings .slider::before { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform .15s; }
+  .pocSettings input:checked + .slider { background: var(--accent); }
+  .pocSettings input:checked + .slider::before { transform: translateX(16px); }
+  .pocSettings .field { display: block; padding: 6px 0; }
+  .pocSettings .field > span { display: block; margin-bottom: 6px; }
+  .pocSettings .textInput { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: inherit; font: inherit; user-select: text; }
+  .pocSettings .textInput:focus { outline: none; border-color: var(--accent); }
+  .pocSettings .buttons { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 6px; }
+  .pocSettings .btn { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  .pocSettings .btn:hover { background: var(--bg-hover); }
+  .pocSettings .btn.primary { width: 100%; border-color: transparent; background: var(--accent); color: #fff; font-weight: 600; }
+  .pocSettings .btn.danger { color: #ff5500; }
+  .pocSettings .link { color: #5bb7ff; text-decoration: none; cursor: pointer; }
+  .pocSettings [hidden] { display: none !important; }
+  .pocSettings select { min-width: 140px; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: inherit; font: inherit; }
+</style>
+</head>
+<body class="theme-dark">
+<!-- Title bar: the Electron app's header (src/header/header.html) layout. -->
+<div class="pocTitlebar" id="titlebar">
+  <div class="header-side">
+    <div class="navigation-controls" id="navControls">
+      <div class="nav-button disabled" id="backBtn" title="Go Back"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M10.5 3L5.5 8l5 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="nav-button disabled" id="fwdBtn" title="Go Forward"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M5.5 3L10.5 8l-5 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="nav-button" id="refreshBtn" title="Refresh Page"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 0 1-11 0 5.5 5.5 0 0 1 9.5-3.7" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/><path d="M10.5 2.5 12 4l-1.5 1.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    </div>
+    <div class="title-bar"></div>
+  </div>
+  <div class="header-center">
+    <div class="tab-group"><div class="tab active"><div class="tab-icon" data-icon="logoIcon"></div><span class="tab-title" id="tabTitle">Library</span><span class="tab-path" id="tabPath">you/likes</span></div></div>
+  </div>
+  <div class="header-side">
+    <div class="title-bar"></div>
+    <form class="pocSearch" id="searchForm"><svg width="12" height="12" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input name="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></form>
+    <div class="nav-button" id="menuBtn" title="Settings"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.75 4.5h10.5M2.75 8h10.5M2.75 11.5h10.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+  </div>
+</div>
+
+<!-- Settings: only options that work in this app. Layout and styles from the
+     Electron app's panel (src/settings). -->
+<aside class="pocSettings" id="settings" aria-label="Settings">
+  <header class="panel-header"><h1>Settings</h1><button class="close-btn" id="settingsClose" title="Close"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M12 4L4 12m8 0L4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></button></header>
+  <nav id="settingsTabs">
+    <button data-tab="general" class="active">General</button>
+    <button data-tab="appearance">Appearance</button>
+    <button data-tab="integrations">Integrations</button>
+    <button data-tab="advanced">Advanced</button>
+  </nav>
+  <main>
+    <section data-tab="general"><h2>Window</h2>
+      <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label></section>
+    <section data-tab="appearance" hidden><h2>Theme</h2>
+      <div class="row"><span>Theme</span><select data-setting="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="system">Match system</option></select></div></section>
+    <section data-tab="integrations" hidden><h2>Discord</h2>
+      <label class="row"><span>Discord Rich Presence</span><span class="toggle"><input type="checkbox" data-setting="discord"><span class="slider"></span></span></label>
+      <p class="hint">Shows the track you're playing on your Discord profile.</p>
+      <h2>Last.fm</h2>
+      <label class="row"><span>Scrobble to Last.fm</span><span class="toggle"><input type="checkbox" data-setting="lastfm"><span class="slider"></span></span></label>
+      <div id="lfmSetup">
+        <p class="hint">Uses your own Last.fm API account: <a class="link" data-external="https://www.last.fm/api/account/create">create one</a>, then paste its key and shared secret. The secret is kept in your macOS Keychain.</p>
+        <label class="field"><span>API key</span><input class="textInput" id="lfmKey" autocomplete="off" spellcheck="false"></label>
+        <label class="field"><span>Shared secret</span><input class="textInput" id="lfmSecret" type="password" autocomplete="off"></label>
+        <div class="buttons"><button class="btn primary" id="lfmConnect">Connect Last.fm</button></div>
+      </div>
+      <div id="lfmConnected" hidden><div class="row"><span>Connected as <b id="lfmName"></b></span><button class="btn danger" id="lfmDisconnect">Disconnect</button></div></div>
+      <p class="hint" id="lfmStatus"></p></section>
+    <section data-tab="advanced" hidden><h2>Privacy</h2>
+      <label class="row"><span>Block ads and trackers</span><span class="toggle"><input type="checkbox" data-setting="adblock"><span class="slider"></span></span></label>
+      <p class="hint">Takes effect the next time the app starts.</p></section>
+  </main>
+</aside>
+
+<div id="app">
+  <header role="banner" class="header sc-selection-disabled fixed g-z-index-header sc-text-h4 show">
+    <div class="header__inner l-container l-fullwidth">
+      <div class="header__left">
+        <div class="header__logo left m-loggedIn">
+          <a href="/discover" data-href="discover" title="Home" class="header__logoLink header__logoLink-iconOnly sc-border-box sc-ir"><div data-icon="logoIcon"></div>SoundCloud</a>
+          <a href="/discover" data-href="discover" title="Home" class="header__logoLink header__logoLink-wordmark sc-border-box sc-ir"><div data-icon="logoWordmark"></div>SoundCloud</a>
+        </div>
+        <nav class="left header__navWrapper" role="navigation">
+          <ul class="header__navMenu left sc-list-nostyle">
+            <li><a class="header__navMenuItem sc-mr-1x" data-menu-name="discover" href="/discover" data-href="discover">Home</a></li>
+            <li><a class="header__navMenuItem sc-mr-1x" data-menu-name="stream" href="/feed" data-href="feed">Feed</a></li>
+            <li class="header__collection-wrapper"><a class="header__navMenuItem" data-menu-name="library" href="/you/library" data-href="you/library">Library</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="header__middle"></div>
+      <div class="header__right sc-clearfix">
+        <div class="header__userNav">
+          <a class="header__userNavButton header__userNavUsernameButton" id="me">
+            <div class="image header__userNavItem header__userNavAvatar image__lightOutline sc-artwork image__rounded m-loaded" style="height: 26px; width: 26px;">
+              <span id="meAvatar" style="width: 26px; height: 26px; opacity: 1;" class="sc-artwork image__rounded image__full"></span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="l-container l-content">
+    <div id="content" role="main"></div>
+  </div>
+
+  <div class="playControls g-z-index-control-bar m-visible" id="playControls">
+    <section role="contentinfo" aria-label="miniplayer" class="playControls__inner">
+      <div class="playControls__wrapper l-container l-fullwidth">
+        <div class="playControls__queue">
+          <div class="queue m-visible">
+            <div class="queue__panel sc-p-2x sc-pb-1x">
+              <div class="queue__title sc-font-light sc-type-medium sc-text-h2 sc-px-2x sc-py-1x">Next up</div>
+              <button type="button" id="queueHide" class="queue__hide sc-button sc-button-small sc-button-secondary sc-button-icon sc-mr-2x" title="Hide queue"><div data-icon="queueHide"></div></button>
+            </div>
+            <div class="queue__scrollable"><div class="queue__itemsContainer sc-px-2x" id="queueList"></div></div>
+          </div>
+        </div>
+        <div class="playControls__bg"></div>
+        <div class="playControls__elements">
+          <button id="prev" class="skipControl sc-ir playControls__control playControls__prev sc-button sc-button-secondary sc-button-large sc-button-icon sc-mr-2x skipControl__previous" title="Skip to previous"><div data-icon="prev"></div>Skip to previous</button>
+          <button id="toggle" type="button" class="playControl sc-button sc-ir playControls__control playControls__play sc-button-play sc-button-large sc-mr-2x" title="Play current"><div><div id="toggleIcon"></div><span class="sc-button-label">Play current</span></div></button>
+          <button id="next" class="skipControl sc-ir playControls__control playControls__next sc-button sc-button-secondary sc-button-large sc-button-icon sc-mr-3x skipControl__next" title="Skip to next"><div data-icon="next"></div>Skip to next</button>
+          <div class="playControls__shuffle playControls__control">
+            <button id="shuffle" title="Shuffle" class="shuffleControl sc-ir sc-button sc-button-secondary sc-button-small sc-button-icon sc-mr-1x"><div data-icon="shuffle"></div>Shuffle</button>
+          </div>
+          <div class="playControls__repeat playControls__control">
+            <button id="repeat" title="Repeat" class="repeatControl sc-ir sc-button sc-button-secondary sc-button-small sc-button-icon"><div><div data-icon="repeat"></div>Repeat</div></button>
+          </div>
+          <div class="playControls__timeline sc-ml-3x">
+            <div class="playbackTimeline is-scrubbable has-sound">
+              <div class="playbackTimeline__timePassed sc-text-primary sc-text-h5"><span aria-hidden="true" id="passed">0:00</span></div>
+              <div class="playbackTimeline__progressWrapper sc-mx-1x" id="timeline" role="progressbar">
+                <div class="playbackTimeline__progressBackground"></div>
+                <div class="playbackTimeline__progressBar" id="bar" style="min-width: 0px; width: 0%;"></div>
+                <div class="playbackTimeline__progressHandle sc-ir" id="handle" style="left: 0%;"></div>
+              </div>
+              <div class="playbackTimeline__duration sc-text-primary sc-text-h5"><span aria-hidden="true" id="dur">0:00</span></div>
+            </div>
+          </div>
+          <div class="playControls__volume">
+            <div class="volume" id="volume" data-level="10">
+              <div class="volume__iconWrapper">
+                <button id="mute" type="button" class="volume__button volume__speakerIcon sc-button sc-button-secondary sc-button-small sc-button-icon" title="Mute"><div><div id="muteIcon"></div></div></button>
+              </div>
+              <div class="volume__sliderWrapper" id="volSlider" role="slider" aria-valuemin="0" aria-valuemax="1" aria-label="Volume">
+                <div class="volume__sliderBackground" id="volBg"></div>
+                <div class="volume__sliderProgress" id="volProgress"></div>
+                <div class="volume__sliderHandle" id="volHandle"></div>
+              </div>
+            </div>
+          </div>
+          <div class="playControls__soundBadge sc-ml-3x">
+            <div class="playbackSoundBadge paused" id="badge" hidden>
+              <a class="playbackSoundBadge__avatar sc-media-image sc-mr-2x" tabindex="-1">
+                <div class="image image__lightOutline sc-artwork-4x sc-artwork m-loaded"><span id="badgeArt" style="opacity: 1;" class="sc-artwork sc-artwork-4x image__full"></span></div>
+              </a>
+              <div class="playbackSoundBadge__titleContextContainer sc-mr-3x">
+                <a class="playbackSoundBadge__lightLink sc-link-light sc-link-secondary sc-truncate sc-text-h5" id="badgeUser"></a>
+                <div class="playbackSoundBadge__title"><a class="playbackSoundBadge__titleLink sc-truncate sc-text-h5 sc-link-primary" id="badgeTitle"><span aria-hidden="true"></span></a></div>
+              </div>
+              <div class="playbackSoundBadge__actions">
+                <button type="button" id="badgeLike" class="sc-button-like playbackSoundBadge__like sc-button-secondary sc-mr-1x sc-button sc-button-small sc-button-icon sc-button-responsive" title="Like"><div data-icon="like"></div><span class="sc-button-label sc-visuallyhidden">Like</span></button>
+                <button type="button" id="badgeFollow" class="sc-button-follow playbackSoundBadge__follow sc-mr-1x sc-button sc-button-small sc-button-icon sc-button-responsive sc-button-secondary m-boldIcon" title="Follow"><div data-icon="follow"></div><span class="sc-button-label sc-visuallyhidden">Follow</span></button>
+                <a id="showQueue" class="playbackSoundBadge__showQueue sc-button sc-button-secondary sc-button-small sc-button-icon" title="Next up"><div data-icon="queue"></div></a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<audio id="audio"></audio>
+<script>/*HLS_JS*/</script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const log = m => window.ipc?.postMessage('[ui] ' + m);
+  const audio = $('audio');
+  const API = 'https://api-v2.soundcloud.com';
+  const LICENSE = 'https://license.media-streaming.soundcloud.cloud/playback/fairplay';
+  const token = document.cookie.split('; ').find(c => c.startsWith('oauth_token='))?.slice(12);
+  const store = { get: k => { try { return JSON.parse(localStorage.getItem('scpoc:' + k)); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('scpoc:' + k, JSON.stringify(v)); } catch {} } };
+
+  // --- Icons: SoundCloud's own (collected from their pages, see harvest()),
+  // with simple fallbacks until they're collected. SoundCloud only renders its
+  // pause icon while playing, so pause is drawn to match their round play icon.
+  const FALLBACK = {
+    play: '<svg class="ic" viewBox="0 0 16 16"><path d="M5 3.5v9L12.5 8z"/></svg>',
+    follow: '<svg class="ic" viewBox="0 0 16 16"><path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 6c0-2.8 2.2-4.5 5-4.5s5 1.7 5 4.5zm11-9h1.5v2h2v1.5h-2v2H12v-2h-2V7h2z"/></svg>',
+    prev: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 5h2v14H6zM19 5v14L9 12z"/></svg>',
+    next: '<svg class="ic" viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg>',
+    shuffle: '<svg class="ic" viewBox="0 0 16 16"><path d="M11 2l3 3-3 3V6H9.4L4.6 12H2v-2h1.6l4.8-6H11z"/></svg>',
+    repeat: '<svg class="ic playControls__repeatIcon" viewBox="0 0 16 16"><path d="M4 4h7V2l3 3-3 3V6H4v3H2V6a2 2 0 0 1 2-2zm8 3h2v3a2 2 0 0 1-2 2H5v2l-3-3 3-3v2h7z"/></svg>',
+    volume: '<svg class="ic" viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2zm9 .2a2.5 2.5 0 0 1 0 3.6l1 1a4 4 0 0 0 0-5.6z"/></svg>',
+    like: '<svg class="ic" viewBox="0 0 16 16"><path d="M8 14s-6-3.6-6-8a3.2 3.2 0 0 1 6-1.6A3.2 3.2 0 0 1 14 6c0 4.4-6 8-6 8z"/></svg>',
+    tilePlay: '<svg class="ic" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+    more: '<svg class="ic" viewBox="0 0 16 16"><path d="M2 6.5h3v3H2zm4.5 0h3v3h-3zm4.5 0h3v3h-3z"/></svg>',
+    shortcutBadge: '<svg class="artistShortcutTile__badge" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#f50"/></svg>',
+    close: '<svg class="ic" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9m0-9l-9 9" stroke="currentColor" stroke-width="1.5"/></svg>',
+  };
+  // On SoundCloud's round play button (the circle is the button's CSS background).
+  const PAUSE = '<svg class="ic" viewBox="0 0 16 16"><path d="M4.5 3.5h2.25v9H4.5zm4.75 0h2.25v9H9.25z"/></svg>';
+  const TILE_PAUSE = '<svg class="ic" viewBox="0 0 24 24"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>';
+  const MUTED = '<svg class="ic" viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2zm9.3-.7L13 7l1.7-1.7.7.7L13.7 7.7l1.7 1.7-.7.7L13 8.4l-1.7 1.7-.7-.7 1.7-1.7-1.7-1.7z"/></svg>';
+  const ICONS = window.__scIcons || {};
+  const icon = k => ICONS[k] || FALLBACK[k] || '';
+  const paintIcons = () => document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
+  paintIcons();
+
+  let clientId = store.get('clientId'), appId = store.get('appId') || '46941';
+  let queue = [], order = [], pos = -1, hls = null, me = null, nextLikes = null;
+  let likedIds = new Set(), repostedIds = new Set(), followingIds = new Set(), shuffle = false, repeat = 'none', dragging = false, seekPending = null;
+  // Playlist likes/reposts by id, system playlist (station, mix) likes by urn.
+  let playlistLikes = new Set(), sysLikes = new Set(), playlistReposts = new Set();
+  // The playlist tile the queue was started from, and the tracks it added.
+  let playingCtx = null, ctxIds = new Set();
+  let upNext = []; // tracks added with "Add to Next up" and not played yet
+
+  // --- SoundCloud's stylesheets, logo and API keys, all from their own site.
+  const applyAssets = a => {
+    if (!a) return;
+    for (const href of a.css) if (!document.querySelector(`link[href="${href}"]`)) {
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l);
+    }
+  };
+  async function refreshFromSite() {
+    const page = await (await fetch('/', { credentials: 'include' })).text();
+    const assets = { css: [...page.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map(m => m[1]) };
+    store.set('assets', assets);
+    applyAssets(assets);
+    for (const src of [...page.matchAll(/https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js/g)].map(m => m[0]).reverse()) {
+      const js = await (await fetch(src)).text();
+      const id = js.match(/client_id:"(\w{32})"/);
+      if (id) {
+        clientId = id[1]; appId = js.match(/client_application_id:(\d+)/)?.[1] || appId;
+        store.set('clientId', clientId); store.set('appId', appId);
+        return;
+      }
+    }
+    throw new Error('client_id not found in SoundCloud bundle');
+  }
+
+  // SoundCloud injects most component CSS and all its icons from JS. When our
+  // cached copy is missing or from an older SoundCloud build, load their own
+  // pages in a hidden same-origin frame, collect both, and hand them to Rust
+  // to cache. Only the first launch after a SoundCloud update pays for this.
+  const ICON_SOURCES = {
+    logoIcon: '.header__logoLink-iconOnly svg', logoWordmark: '.header__logoLink-wordmark svg',
+    search: '.headerSearch__submit svg',
+    prev: '.skipControl__previous svg', next: '.skipControl__next svg', play: '.playControls__play svg',
+    shuffle: '.shuffleControl svg', repeat: '.repeatControl svg', volume: '.volume__speakerIcon svg',
+    like: '.playbackSoundBadge__like svg', follow: '.playbackSoundBadge__follow svg', queue: '.playbackSoundBadge__showQueue svg',
+    queueHide: '.queue__hide svg', tilePlay: '.playableTile__playButton svg', soundPlay: '.soundTitle__playButton svg',
+    soundLike: '.soundActions .sc-button-like svg', repost: '.soundActions .sc-button-repost svg', copylink: '.sc-button-copylink svg',
+    plays: '.sc-ministats-plays svg', comments: '.sc-ministats-comments svg', reposted: '.soundContext__repost svg',
+    followers: '.sc-ministats-followers svg', verified: '.verifiedBadge svg',
+    more: '.sc-button-more svg', share: '.sc-button-share svg', sounds: '.sc-ministats-sounds svg',
+    likes: '.sc-ministats-likes svg', reposts: '.soundBadge .sc-ministats-reposts svg', shortcutBadge: 'svg.artistShortcutTile__badge',
+    // Only on the "more" menu and the Add to Playlist modal, which harvest() opens on /discover.
+    queueAdd: '.moreActions .sc-button-queue svg', addtoset: '.moreActions .sc-button-addtoset svg',
+    station: '.moreActions .sc-button-startstation svg', close: '.modal__closeButton svg',
+  };
+  const HARVEST_REV = 'r4'; // bump when the pages/icons collected change
+  async function harvest(version) {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const css = new Set(), icons = {};
+    for (const path of ['/you/likes', '/search/sounds?q=music', '/feed', '/you/library', '/you/following', '/soundcloud', '/discover']) {
+      const f = document.createElement('iframe');
+      f.style.cssText = 'position:fixed;left:-20000px;top:0;width:1400px;height:900px;visibility:hidden';
+      f.src = path;
+      document.body.appendChild(f);
+      await new Promise(r => { f.onload = r; setTimeout(r, 20000); });
+      let last = -1;
+      for (let k = 0; k < 30; k++) {
+        await sleep(500);
+        const n = f.contentDocument?.querySelectorAll('style').length ?? 0;
+        if (n === last && n > 5) break;
+        last = n;
+      }
+      const doc = f.contentDocument;
+      // The "more" menu and Add to Playlist modal bring their CSS and icons only
+      // when opened; opening them (and closing) changes nothing on the account.
+      if (path === '/discover') {
+        for (let k = 0; k < 40 && !doc?.querySelector('.audibleTile .sc-button-more'); k++) await sleep(500);
+        doc?.querySelector('.audibleTile .sc-button-more')?.click();
+        await sleep(1500);
+        const add = doc?.querySelector('.moreActions .sc-button-addtoset');
+        for (const [k, sel] of Object.entries(ICON_SOURCES)) { const svg = !icons[k] && doc?.querySelector(sel); if (svg) icons[k] = svg.outerHTML; }
+        add?.click();
+        await sleep(4000);
+        doc?.querySelector('.modal .tabs__tab')?.click();
+        await sleep(2000);
+      }
+      for (const st of doc?.querySelectorAll('style') ?? []) {
+        let text = st.textContent;
+        try { if (!text.trim() && st.sheet) text = [...st.sheet.cssRules].map(r => r.cssText).join('\n'); } catch {}
+        if (text.trim()) css.add(text);
+      }
+      for (const [k, sel] of Object.entries(ICON_SOURCES)) {
+        const svg = !icons[k] && doc?.querySelector(sel);
+        if (svg) icons[k] = svg.outerHTML;
+      }
+      f.remove();
+    }
+    const text = [...css].join('\n');
+    $('sc-styles').textContent = text;
+    Object.assign(ICONS, icons);
+    paintIcons(); paintPlayState(); paintVolume();
+    window.ipc?.postMessage('styles:' + JSON.stringify({ version, css: text, icons }));
+    log(`collected ${css.size} style blocks (${Math.round(text.length / 1024)} KB) and ${Object.keys(icons).length}/${Object.keys(ICON_SOURCES).length} icons`);
+  }
+
+  async function api(path, params = {}, retry = true, method = 'GET', body) {
+    const u = new URL(path.startsWith('http') ? path : API + path);
+    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+    u.searchParams.set('client_id', clientId);
+    const headers = token ? { Authorization: 'OAuth ' + token } : {};
+    if (body) headers['Content-Type'] = 'application/json';
+    const r = await fetch(u, { method, headers, body: body && JSON.stringify(body) });
+    if (r.status === 401 && retry) { await refreshFromSite(); return api(path, params, false, method, body); }
+    if (!r.ok) throw new Error(`${method} ${u.pathname} → ${r.status}`);
+    return method === 'GET' ? r.json() : null;
+  }
+  // All ids of a SoundCloud "ids" collection, following next_href.
+  async function allIds(path) {
+    const ids = new Set();
+    let page = await api(path, { limit: 200 }); // some id lists refuse more than 200 a page
+    for (;;) {
+      (page.collection || []).forEach(id => ids.add(id));
+      if (!page.next_href) return ids;
+      page = await api(page.next_href);
+    }
+  }
+
+  const fmt = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const isDrm = t => !!t.media?.transcodings.some(x => x.format.protocol.includes('encrypted'));
+  const art = (t, size) => (t.artwork_url || t.user?.avatar_url || '').replace('-large.', `-${size}.`);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const status = m => log(m);
+
+  // --- Views. Markup follows SoundCloud's own (captured from their pages), so
+  // their CSS lays it out; every link is an in-app route (data-href).
+  const trackPath = t => (t?.permalink_url || '').replace(/^https:\/\/soundcloud\.com\//, '');
+  const link = (path, cls, inner, title = '') => `<a class="${cls}" href="/${esc(path)}" data-href="${esc(path)}"${title ? ` title="${esc(title)}"` : ''}>${inner}</a>`;
+  const count = n => { n = n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); };
+  const ago = iso => {
+    const s = (Date.now() - new Date(iso)) / 1000;
+    for (const [u, n] of [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]])
+      if (s >= n) { const k = Math.floor(s / n); return `${k} ${u}${k > 1 ? 's' : ''} ago`; }
+    return 'just now';
+  };
+  let viewToken = 0; // a newer page view makes older views' late results drop
+  const artSpan = (url, cls) => `<span style="opacity:1;width:100%;height:100%;background-image:url(${esc(url)})" class="sc-artwork ${cls} image__full"></span>`;
+
+  // The playable tracks on screen; returns [track, queue index] pairs.
+  function addTracks(tracks, append = false) {
+    tracks = tracks.filter(t => t && t.kind === 'track');
+    const start = append ? queue.length : 0, cur = current();
+    queue = append ? queue.concat(tracks) : tracks;
+    order = queue.map((_, i) => i);
+    if (shuffle) shuffleOrder();
+    pos = cur ? order.findIndex(i => queue[i].id === cur.id) : -1;
+    // A new page's tracks keep what was added to Next up, right after the current one.
+    if (!append && upNext.length) { const n = queue.length; queue = queue.concat(upNext); order.splice(pos + 1, 0, ...upNext.map((_, k) => n + k)); }
+    renderQueue();
+    return tracks.map((t, k) => [t, start + k]);
+  }
+  // "Add to Next up": right after the current track, without touching playback.
+  function addNext(tracks) {
+    tracks = tracks.filter(t => t?.kind === 'track');
+    const n = queue.length;
+    queue = queue.concat(tracks);
+    order.splice(pos + 1, 0, ...tracks.map((_, k) => n + k));
+    upNext = tracks.concat(upNext);
+    renderQueue();
+    return tracks.length;
+  }
+  // Plays a list (a playlist, an artist's new tracks) without disturbing the
+  // queue indices the tracks on screen point at; ctx marks the tile it came from.
+  async function playList(tracks, ctx = null, k = 0) {
+    const pairs = addTracks(tracks, true);
+    if (!pairs[k]) return;
+    await play(pairs[k][1]);
+    playingCtx = ctx; ctxIds = new Set(tracks.map(t => t.id));
+    markPlaying();
+  }
+
+  // Loads a paged SoundCloud collection, then the next page whenever the list's
+  // end scrolls near, like their lazyLoadingList.
+  function paged(token, url, params, render) {
+    const load = async (u, first) => {
+      const page = await api(u, first ? params : {});
+      if (token !== viewToken) return;
+      render(page, first);
+      const s = document.querySelector('#content .lazyLoadingList__sentinel');
+      if (page.next_href && s) new IntersectionObserver((e, obs) => {
+        if (e[0].isIntersecting) { obs.disconnect(); load(page.next_href, false).catch(err => status('Error: ' + err.message)); }
+      }, { rootMargin: '800px' }).observe(s);
+    };
+    return load(url, true);
+  }
+
+  // Tracks, playlists and system playlists on screen, by the key their "more"
+  // buttons carry: t:<id>, p:<id>, s:<urn>.
+  const things = new Map();
+  const keyOf = x => x.kind === 'track' ? 't:' + x.id : x.kind === 'system-playlist' ? 's:' + x.urn : 'p:' + x.id;
+  const remember = x => { const k = keyOf(x); things.set(k, x); return k; };
+  const SOCIAL_ATTR = { track: 'like', playlist: 'plike', 'system-playlist': 'slike' };
+  const isLiked = x => x.kind === 'track' ? likedIds.has(x.id) : x.kind === 'system-playlist' ? sysLikes.has(x.urn) : playlistLikes.has(x.id);
+  // The like / follow / more buttons a tile shows on hover (SoundCloud's playableTile__actions).
+  function tileActions(x) {
+    const liked = isLiked(x), uid = x.user?.id ?? x.user_id;
+    const btn = (cls, attrs, ic, label) => `<button type="button" ${attrs} class="${cls} playableTile__actionButton sc-button sc-button-small sc-button-icon" title="${esc(label)}"><div>${icon(ic)}</div><span class="sc-button-label sc-visuallyhidden">${esc(label)}</span></button>`;
+    return `<div class="playableTile__actions"><div class="playableTile__actionWrapper">
+      ${btn('sc-button-like' + (liked ? ' sc-button-selected' : ''), `data-${SOCIAL_ATTR[x.kind] || 'plike'}="${esc(x.kind === 'system-playlist' ? x.urn : x.id)}"`, 'soundLike', liked ? 'Unlike' : 'Like')}
+      ${x.kind === 'track' && uid && uid !== me?.id ? btn('sc-button-follow sc-button-responsive sc-button-secondary m-boldIcon' + (followingIds.has(uid) ? ' sc-button-selected' : ''), `data-follow="${uid}"`, 'follow', 'Follow ' + (x.user?.username || '')) : ''}
+      ${btn('sc-button-more sc-button-responsive', `data-more="${esc(remember(x))}" aria-haspopup="true"`, 'more', 'More')}</div></div>`;
+  }
+
+  function tile(t, i) {
+    const li = document.createElement('li');
+    li.className = 'badgeList__item';
+    li.dataset.i = i;
+    li.innerHTML = `<div class="audibleTile playableTile sc-mb-6x m-interactive" data-playbutton="hover" data-actions="hover">
+      <div class="playableTile__artwork"><a class="playableTile__artworkLink audibleTile__artworkLink">
+        <div class="playableTile__image"><div class="image image__lightOutline sc-artwork m-loaded" style="height:100%;width:100%">${artSpan(art(t, 't200x200'), '')}</div></div>
+        <span class="playableTile__tierIndicator tierIndicator__smallGoPlus tierIndicator__artwork ${isDrm(t) ? '' : 'sc-hidden'}"></span></a>
+        <div class="playableTile__imageOverlay"></div>
+        <div class="playableTile__playButton audibleTile__playButton g-z-index-content"><a role="button" class="sc-button-play playButton sc-button sc-button-xxlarge" title="Play"><div><div class="pocPlayIcon"></div></div></a></div>
+        ${tileActions(t)}
+      </div>
+      <div class="playableTile__description sc-mt-1x">
+        <div class="playableTile__descriptionContainer">${link(trackPath(t), 'sc-link-primary sc-link-dark sc-type-light sc-text-secondary playableTile__mainHeading playableTile__heading audibleTile__audibleHeading sc-truncate sc-font-light sc-text-h4', esc(t.title), t.title)}</div>
+        <div class="playableTile__usernameHeadingContainer sc-type-light sc-text-secondary sc-font-light">${link(t.user?.permalink, 'sc-link-secondary sc-link-light playableTile__usernameHeading audibleTile__usernameHeading sc-truncate sc-text-h4', esc(t.user?.username))}</div>
+      </div></div>`;
+    li.querySelector('.playableTile__artwork').onclick = e => { if (!e.target.closest('.playableTile__actions')) toggleOrPlay(i); };
+    return li;
+  }
+
+  function playlistTile(p) {
+    const li = document.createElement('li');
+    li.className = 'badgeList__item';
+    const path = (p.permalink_url || '').replace(/^https:\/\/soundcloud\.com\//, '');
+    const cover = p.artwork_url || p.calculated_artwork_url || p.tracks?.find(t => t.artwork_url)?.artwork_url || p.user?.avatar_url || '';
+    li.innerHTML = `<div class="libraryPlaylistTile sc-mb-6x"><div class="audibleTile playableTile sc-mb-6x" data-playbutton="hover" data-actions="hover">
+      <div class="playableTile__artwork">${link(path, 'playableTile__artworkLink audibleTile__artworkLink', `<div class="playableTile__image"><div class="image image__lightOutline sc-artwork m-loaded" style="height:100%;width:100%">${artSpan(cover.replace('-large.', '-t200x200.'), '')}</div></div>`)}
+        <div class="playableTile__imageOverlay"></div>${tileActions(p)}</div>
+      <div class="playableTile__description sc-mt-1x">
+        <div class="playableTile__descriptionContainer">${link(path, 'sc-link-primary sc-link-dark sc-type-light sc-text-secondary playableTile__mainHeading playableTile__heading audibleTile__audibleHeading sc-truncate sc-font-light sc-text-h4', esc(p.title), p.title)}</div>
+        <div class="playableTile__usernameHeadingContainer sc-type-light sc-text-secondary sc-font-light">${link(p.user?.permalink, 'sc-link-secondary sc-link-light playableTile__usernameHeading audibleTile__usernameHeading sc-truncate sc-text-h4', esc(p.user?.username))}</div>
+      </div></div></div>`;
+    return li;
+  }
+
+  function userTile(u) {
+    const li = document.createElement('li');
+    li.className = 'badgeList__item';
+    const following = followingIds.has(u.id);
+    li.innerHTML = `<div class="userBadgeListItem"><div class="userBadgeListItem__artwork">${link(u.permalink, 'userBadgeListItem__image', `<div class="image image__lightOutline sc-artwork image__rounded m-loaded" style="height:100%;width:100%"><span style="background-image:url(${esc((u.avatar_url || '').replace('-large.', '-t200x200.'))});width:100%;height:100%;opacity:1" class="sc-artwork image__rounded image__full"></span></div>`)}</div>
+      <div class="userBadgeListItem__title sc-mt-2x sc-mb-0.25x">${link(u.permalink, 'userBadgeListItem__heading sc-type-small sc-text-h4 sc-link-dark sc-link-primary sc-truncate', esc(u.username), 'Visit ' + u.username + '’s profile')}</div>
+      <div class="userBadgeListItem__subtitle sc-mb-1x"><div class="userStats"><ul class="sc-ministats-group"><li class="sc-ministats-item"><span class="sc-ministats sc-ministats-small sc-link-secondary sc-ministats-followers g-flex-row-centered"><div style="display:inline-block;width:16px;height:16px;vertical-align:middle;margin-right:2px">${icon('followers')}</div><span>${count(u.followers_count)} followers</span></span></li></ul></div></div>
+      <div class="userBadgeListItem__action sc-mb-1.5x"><button type="button" class="sc-button-follow sc-button sc-button-medium sc-button-primary${following ? ' sc-button-selected' : ''}" data-follow="${u.id}"><span class="sc-button-label">${following ? 'Following' : 'Follow'}</span></button></div></div>`;
+    return li;
+  }
+
+  // A track in a list (feed, search, profile), with "X reposted a track" when given.
+  function soundItem(t, i, ctx) {
+    const li = document.createElement('li');
+    li.className = 'soundList__item';
+    li.dataset.i = i;
+    const context = ctx ? `<div class="soundContext g-flex-row-centered"><div class="g-avatar-badge userAvatarBadge soundContext__userAvatar"><div class="g-avatar-badge-body">${link(ctx.user?.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__lightOutline sc-artwork-4x sc-artwork image__rounded m-loaded"><span style="background-image:url(${esc(ctx.user?.avatar_url)});opacity:1" class="sc-artwork sc-artwork-4x image__rounded image__full"></span></div></div>`)}</div></div>
+      <div><span class="soundContext__line sc-font-body">${link(ctx.user?.permalink, 'soundContext__usernameLink sc-link-dark sc-link-primary sc-text-h4', esc(ctx.user?.username))} ${ctx.repost ? `<span class="sc-ministats sc-ministats-small sc-ministats-reposts soundContext__repost"><div>${icon('reposted')}</div> reposted</span> a track` : 'posted a track'} <time class="relativeTime">${ago(ctx.at)}</time></span></div></div>` : '';
+    const liked = likedIds.has(t.id), reposted = repostedIds.has(t.id);
+    li.innerHTML = `<div class="activity"><div role="group" class="sound streamContext">${context}<div class="sound__body">
+      <div class="sound__artwork sc-mr-1x"><a class="sound__coverArt"><div class="image image__lightOutline sc-artwork-20x sc-artwork m-loaded">${artSpan(art(t, 't200x200'), 'sc-artwork-20x')}</div></a>
+        <span class="sound__tierIndicator tierIndicator__smallGoPlus tierIndicator__artwork ${isDrm(t) ? '' : 'sc-hidden'}"></span></div>
+      <div class="sound__content"><div class="sound__header sc-mb-1.5x sc-px-2x"><div class="soundTitle sc-clearfix sc-hyphenate sc-type-h2 sc-text-h4 streamContext m-interactive"><div class="soundTitle__titleContainer">
+        <div class="soundTitle__playButton"><a role="button" class="sc-button-play playButton sc-button sc-button-xlarge" title="Play"><div><div class="pocPlayIcon" data-kind="soundPlay"></div></div></a></div>
+        <div class="soundTitle__usernameTitleContainer sc-mb-0.5x"><div class="sc-type-light sc-text-secondary sc-text-h4 soundTitle__secondary">${link(t.user?.permalink, 'soundTitle__username sc-link-secondary sc-link-light', `<span class="soundTitle__usernameText">${esc(t.user?.username)}</span>`)}</div>
+        ${link(trackPath(t), 'sc-link-primary soundTitle__title sc-link-dark sc-text-h4', `<span>${esc(t.title)}</span>`)}</div>
+        <div class="soundTitle__additionalContainer sc-ml-1.5x"><div class="soundTitle__uploadTime sc-mb-0.25x"><time class="relativeTime sc-text-secondary sc-text-captions">${t.created_at ? ago(t.created_at) : ''}</time></div></div>
+      </div></div></div>
+      <div class="sound__waveform sc-px-2x"><canvas width="976" height="120" data-i="${i}"></canvas></div>
+      <div class="sound__footer g-all-transitions-300"><div class="sound__soundActions sc-mt-1.5x sc-pl-2x"><div class="soundActions sc-button-toolbar soundActions__medium"><div class="sc-button-group sc-button-group-medium">
+        <button type="button" data-like="${t.id}" class="sc-button-like sc-button-secondary sc-button sc-button-medium sc-button-responsive${liked ? ' sc-button-selected' : ''}" title="${liked ? 'Unlike' : 'Like'}"><div>${icon('soundLike')}</div><span class="sc-button-label">${count(t.likes_count)}</span></button>
+        <button type="button" data-repost="${t.id}" class="sc-button-repost sc-button-secondary sc-button sc-button-medium sc-button-responsive${reposted ? ' sc-button-selected' : ''}" title="${reposted ? 'Unpost' : 'Repost'}"><div>${icon('repost')}</div><span class="sc-button-label">${count(t.reposts_count)}</span></button>
+        <button type="button" data-copy="${esc(t.permalink_url)}" class="sc-button-copylink sc-button-secondary sc-button sc-button-medium sc-button-icon sc-button-responsive" title="Copy Link"><div>${icon('copylink')}</div></button>
+        <button type="button" data-more="${esc(remember(t))}" data-short="1" class="sc-button-more sc-button-secondary sc-button sc-button-medium sc-button-responsive" aria-haspopup="true" title="More"><div>${icon('more')}</div><span class="sc-button-label">More</span></button>
+      </div></div></div>
+      <div class="sound__footerRight sc-mt-1x"><div class="sound__soundStats"><ul class="soundStats sc-ministats-group">
+        <li class="sc-ministats-item" title="${(t.playback_count || 0).toLocaleString()} plays"><span class="sc-ministats sc-ministats-small sc-ministats-plays sc-text-secondary"><div style="display:inline-block;width:16px;height:16px;margin-right:2px;vertical-align:top">${icon('plays')}</div><span>${count(t.playback_count)}</span></span></li>
+        <li class="sc-ministats-item" title="${(t.comment_count || 0).toLocaleString()} comments"><span class="sc-ministats sc-ministats-small sc-ministats-comments sc-text-secondary"><div style="display:inline-block;width:16px;height:16px;margin-right:2px;vertical-align:top">${icon('comments')}</div><span>${count(t.comment_count)}</span></span></li>
+      </ul></div></div></div></div></div></div></div>`;
+    li.querySelector('.soundTitle__playButton').onclick = () => toggleOrPlay(i);
+    li.querySelector('.sound__coverArt').onclick = () => toggleOrPlay(i);
+    li.querySelector('canvas').onclick = e => {
+      const f = e.offsetX / e.target.clientWidth;
+      if (current() === queue[i]) seekTo(f); else play(i, f);
+    };
+    queueMicrotask(() => drawWave(t, i));
+    return li;
+  }
+
+  const sectionShell = (heading, listId, kind = 'badgeList') => `<section class="collection__section sc-clearfix"><div class="collectionSection">
+    ${heading ? `<div class="collectionSection__top sc-py-1x sc-px-2x sc-mb-1x g-flex-row-centered-spread"><h2 class="collectionSection__subHeading sc-text-light sc-text-primary sc-type-large sc-text-h3">${heading}</h2></div>` : ''}
+    <div class="collectionSection__list sc-clearfix"><div class="${kind} sc-mx-2x lazyLoadingList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="${listId}"></ul><div class="lazyLoadingList__sentinel"></div></div></div></div></section>`;
+
+  // ---- Library (you/...)
+  const LIB_TABS = [['library', 'Overview'], ['likes', 'Likes'], ['sets', 'Playlists'], ['albums', 'Albums'], ['stations', 'Stations'], ['following', 'Following'], ['history', 'History']];
+  async function viewLibrary(tab, token) {
+    const tabs = LIB_TABS.map(([k, label]) => `<li class="g-tabs-item networkTabs__${k}">${link('you/' + k, 'g-tabs-link' + (k === tab ? ' active' : ''), label)}</li>`).join('');
+    const headings = { likes: 'Hear the tracks you’ve liked:', sets: 'Hear your own playlists and the playlists you’ve liked:', albums: 'Hear the albums you’ve liked:', stations: 'Hear the stations you’ve liked:', following: 'Hear what the people you follow have posted:', history: 'Hear the tracks you’ve played:' };
+    $('content').innerHTML = `<div><div class="l-collection"><div class="l-nav sc-mt-3x sc-mb-2x"><ul class="collectionNav g-tabs g-tabs-large">${tabs}</ul></div>
+      <div class="l-main sc-pb-5x"><div class="collection" id="lib">${tab === 'library' ? '' : sectionShell(headings[tab], 'grid')}</div></div></div></div>`;
+    const grid = () => $('grid');
+    if (tab === 'likes') return paged(token, `/users/${me.id}/track_likes`, { limit: 48 }, (page, first) => {
+      const tracks = page.collection.map(l => l.track);
+      tracks.forEach(t => t && likedIds.add(t.id));
+      grid().append(...addTracks(tracks, !first).map(([t, i]) => tile(t, i)));
+      markPlaying();
+    });
+    if (tab === 'history') return paged(token, '/me/play-history/tracks', { limit: 48 }, (page, first) => {
+      grid().append(...addTracks(page.collection.map(x => x.track), !first).map(([t, i]) => tile(t, i)));
+      markPlaying();
+    });
+    if (tab === 'following') return paged(token, `/users/${me.id}/followings`, { limit: 48 }, page => grid().append(...page.collection.map(userTile)));
+    if (tab === 'stations') return paged(token, '/me/library/stations', { limit: 48 }, page => grid().append(...page.collection.map(x => x.station || x.system_playlist || x.playlist || x).filter(p => p?.title).map(playlistTile)));
+    if (tab === 'sets' || tab === 'albums') return paged(token, '/me/library/all', { limit: 48 }, page => {
+      const lists = page.collection.map(x => x.playlist || x.system_playlist).filter(p => p && !!p.is_album === (tab === 'albums'));
+      grid().append(...lists.map(playlistTile));
+    });
+    // Overview: a row of each, like SoundCloud's.
+    $('lib').innerHTML = sectionShell('Recently played', 'ovHistory') + sectionShell('Likes', 'ovLikes') + sectionShell('Following', 'ovFollowing');
+    const [hist, likes, follows] = await Promise.all([api('/me/play-history/tracks', { limit: 6 }), api(`/users/${me.id}/track_likes`, { limit: 12 }), api(`/users/${me.id}/followings`, { limit: 6 })]);
+    if (token !== viewToken) return;
+    const pairs = addTracks([...hist.collection.map(x => x.track), ...likes.collection.map(l => l.track)]);
+    const nh = hist.collection.filter(x => x.track?.kind === 'track').length;
+    $('ovHistory').append(...pairs.slice(0, nh).map(([t, i]) => tile(t, i)));
+    $('ovLikes').append(...pairs.slice(nh).map(([t, i]) => tile(t, i)));
+    $('ovFollowing').append(...follows.collection.map(userTile));
+    markPlaying();
+  }
+
+  // ---- Home (/discover): the signed-in "mixed selections", each a carousel.
+  const ARROW = { fwd: 'M18.0607 12L9.53034 20.5303L8.46968 19.4697L15.9393 12L8.46968 4.53033L9.53034 3.46967L18.0607 12Z', back: 'M5.93933 12L14.4697 3.46967L15.5303 4.53033L8.06065 12L15.5303 19.4697L14.4697 20.5303L5.93933 12Z' };
+  const arrowBtn = (dir, label) => `<div class="tileGallery__sliderPeek tileGallery__sliderPeek${dir === 'fwd' ? 'Forward' : 'Backward'}"><button type="button" class="tileGallery__sliderButton tileGallery__slide${dir === 'fwd' ? 'Forward' : 'Backward'}Button sc-button sc-button-medium sc-button-secondary sc-button-icon" aria-label="${label}"><div><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="${ARROW[dir]}" fill="currentColor"></path></svg></div></button></div>`;
+
+  // A playlist or system playlist (tracks come with it, or from /resolve) as a tile whose play button plays it.
+  function homeTile(p) {
+    const path = (p.permalink_url || '').replace(/^https:\/\/soundcloud\.com\//, '');
+    const sys = p.kind === 'system-playlist';
+    const cover = (p.artwork_url || p.calculated_artwork_url || p.tracks?.find(t => t.artwork_url)?.artwork_url || p.user?.avatar_url || '').replace('-large.', '-t200x200.');
+    const title = (sys && p.short_title) || p.title;
+    const sub = sys ? `<span class="playableTile__usernameHeading sc-link-light sc-link-secondary sc-truncate">${esc(p.short_description || p.description || '')}</span>`
+      : link(p.user?.permalink, 'sc-link-secondary sc-link-light playableTile__usernameHeading audibleTile__usernameHeading sc-truncate sc-text-h4', esc(p.user?.username));
+    const d = document.createElement('div');
+    d.innerHTML = `<div class="${sys ? 'systemPlaylistTile' : 'audibleTile'} playableTile sc-mb-6x" data-playbutton="hover" data-actions="hover">
+      <div class="playableTile__artwork">${link(path, 'playableTile__artworkLink' + (sys ? '' : ' audibleTile__artworkLink'), `<div class="playableTile__image"><div class="image image__lightOutline sc-artwork m-loaded" style="height:100%;width:100%">${artSpan(cover, '')}</div></div>`)}
+        <div class="playableTile__imageOverlay"></div>
+        <div class="playableTile__playButton g-z-index-content"><a role="button" class="sc-button-play playButton sc-button sc-button-xxlarge" title="Play"><div><div class="pocPlayIcon">${icon('tilePlay')}</div></div></a></div>${tileActions(p)}</div>
+      <div class="playableTile__description sc-mt-1x"><div class="playableTile__descriptionContainer">${link(path, 'sc-link-primary sc-link-dark sc-type-light sc-text-secondary playableTile__mainHeading playableTile__heading sc-truncate sc-font-light sc-text-h4', esc(title), title)}</div>
+        <div class="playableTile__usernameHeadingContainer sc-type-light sc-text-secondary sc-font-light sc-text-h4">${sub}</div></div></div>`;
+    const key = remember(p);
+    d.firstElementChild.dataset.ctx = key;
+    // Playing from this tile: the button pauses and resumes instead of reloading.
+    d.querySelector('.playableTile__playButton').onclick = async e => {
+      e.preventDefault();
+      if (playingCtx === key && current()) return audio.paused ? audio.play() : audio.pause();
+      try { await playList(await setTracks(p), key); } catch (err) { status('Error: ' + err.message); }
+    };
+    return d.firstElementChild;
+  }
+  // All tracks of a playlist or system playlist, in full.
+  const setTracks = async p => fullTracks((await api('/resolve', { url: p.permalink_url })).tracks || []);
+
+  // SoundCloud's tileGallery: arrows page through the slides; every gallery
+  // re-clamps when the window resizes (one listener for all of them).
+  const galleries = new Set();
+  function gallery(g, slides) {
+    const panel = g.querySelector('.tileGallery__sliderPanel'), slider = g.querySelector('.tileGallery__slider');
+    panel.append(...slides);
+    let x = 0;
+    const sync = () => {
+      if (!g.isConnected) return galleries.delete(sync);
+      const max = Math.max(0, panel.scrollWidth - slider.clientWidth);
+      x = Math.min(Math.max(0, x), max);
+      panel.style.transform = `translate3d(${-x}px,0,0)`;
+      g.classList.toggle('m-hasItemsBackward', x > 0);
+      g.classList.toggle('m-hasItemsForward', x < max - 1);
+    };
+    const step = d => { const w = slides[0]?.offsetWidth || 1; x += d * Math.max(1, Math.floor(slider.clientWidth / w)) * w; sync(); };
+    g.querySelector('.tileGallery__slideForwardButton').onclick = () => step(1);
+    g.querySelector('.tileGallery__slideBackwardButton').onclick = () => step(-1);
+    galleries.add(sync);
+    sync();
+  }
+  window.addEventListener('resize', () => galleries.forEach(sync => sync()));
+
+  // A Home item as the element SoundCloud shows for it (track, user or playlist tile).
+  function homeItem(x) {
+    if (x.kind === 'track') { const [[t, i]] = addTracks([x], true); const el = tile(t, i).firstElementChild; el.dataset.i = i; return el; }
+    if (x.kind === 'user') return userTile(x).firstElementChild;
+    return homeTile(x);
+  }
+  let homeSels = null; // the last /mixed-selections, for "See all"
+  const selItems = sel => {
+    const seen = new Set(); // "Recently Played" lists each play, so the same item repeats
+    return (sel.items?.collection || []).filter(x => (x?.title || x?.username) && !seen.has(x.kind + (x.urn || x.id)) && seen.add(x.kind + (x.urn || x.id)));
+  };
+  const selKey = sel => sel.urn || String(sel.id);
+
+  async function viewHome(token) {
+    $('content').innerHTML = `<div><div class="l-fluid-fixed"><div class="l-main"><div class="l-content"><div class="modular-home-mixed-selection lazyLoadingList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="home"></ul></div></div></div>${SIDEBAR}</div></div>`;
+    const sels = homeSels = (await api('/mixed-selections', { limit: 30 })).collection || [];
+    if (token !== viewToken) return;
+    for (const sel of sels) {
+      const items = selItems(sel);
+      if (!items.length) continue;
+      const slides = items.map((x, k) => {
+        const el = homeItem(x);
+        const s = document.createElement('div');
+        s.className = 'tileGallery__sliderPanelSlide';
+        s.dataset.tileIndex = k;
+        if (el.dataset.i) s.dataset.i = el.dataset.i;
+        s.append(el);
+        return s;
+      });
+      const li = document.createElement('li');
+      li.className = 'mixedModularHome__item';
+      li.innerHTML = `<div class="mixedSelectionModule"><div class="mixedSelectionModule__title sc-ml-2x sc-pt-3x g-flex-row-centered-spread"><h2 class="mixedSelectionModule__titleText">${esc(sel.title)}</h2>${link('discover/section/' + encodeURIComponent(selKey(sel)), 'sc-link-light sc-link-secondary sc-text-h4 sc-mr-2x', 'See all')}</div>
+        <div class="mixedSelectionGallery tileGallery m-fourPanels m-transitionsEnabled"><div class="tileGallery__slider"><div class="tileGallery__sliderPeekContainer"><div class="tileGallery__sliderPanel"></div></div></div>${arrowBtn('fwd', 'forward')}${arrowBtn('back', 'backward')}</div></div>`;
+      $('home').append(li);
+      const g = li.querySelector('.tileGallery');
+      gallery(g, slides);
+      // "See all" only where the row doesn't already show everything.
+      if (!g.classList.contains('m-hasItemsForward')) li.querySelector('.mixedSelectionModule__title a').remove();
+    }
+    markPlaying();
+    renderSidebar(token);
+    return { title: 'Home' };
+  }
+
+  // "See all" of a Home section: every item as a tile grid.
+  async function viewSection(key, token) {
+    const sels = homeSels || (await api('/mixed-selections', { limit: 30 })).collection || [];
+    if (token !== viewToken) return;
+    homeSels = sels;
+    const sel = sels.find(s => selKey(s) === key);
+    if (!sel) throw new Error('This section is no longer on Home');
+    $('content').innerHTML = `<div class="sc-pt-3x">${sectionShell(esc(sel.title), 'grid')}</div>`;
+    $('grid').append(...selItems(sel).map(x => {
+      const li = document.createElement('li');
+      li.className = 'badgeList__item';
+      const el = homeItem(x);
+      if (el.dataset.i) li.dataset.i = el.dataset.i;
+      li.append(el);
+      return li;
+    }));
+    markPlaying();
+    return { title: sel.title };
+  }
+
+  // ---- Right sidebar (Home and Feed): SoundCloud's streamSidebar modules.
+  const SIDEBAR = '<div class="l-sidebar-right"><div class="streamSidebar sc-clearfix" id="sidebar"></div></div>';
+  const sidebarHeader = (title, more, href) => more
+    ? `<a class="sidebarHeader g-flex-row-centered-spread sc-link-light sc-link-primary sidebar__moreLink sc-border-light-bottom" href="/${href || ''}"${href ? ` data-href="${href}"` : ''}><h4 class="sidebarHeader__title sc-font sc-link-primary g-flex-row-centered noIcon sidebarHeader__title__webi__style"><span class="sidebarHeader__actualTitle sidebarHeader__actualTitle__webi__style">${title}</span></h4><span class="sidebarHeader__more">${more}</span></a>`
+    : `<div class="sidebarHeader g-flex-row-centered-spread sc-type-light sc-text-primary sc-border-light-bottom"><h4 class="sidebarHeader__title sc-font g-flex-row-centered noIcon sidebarHeader__title__webi__style"><span class="sidebarHeader__actualTitle sidebarHeader__actualTitle__webi__style">${title}</span></h4></div>`;
+  const ministat = (cls, ic, n, what) => `<li title="${(n || 0).toLocaleString()} ${what}" class="sc-ministats-item"><span class="sc-ministats sc-ministats-small ${cls} sc-text-secondary"><div style="display:inline-block;width:16px;height:16px;margin-right:2px;vertical-align:top">${icon(ic)}</div><span class="sc-visuallyhidden">${(n || 0).toLocaleString()} ${what}</span><span aria-hidden="true">${count(n)}</span></span></li>`;
+  // A compact track row (likes, listening history), from SoundCloud's soundBadge.
+  function soundBadge(t, i, itemClass) {
+    const li = document.createElement('li');
+    li.className = itemClass;
+    li.dataset.i = i;
+    const liked = likedIds.has(t.id);
+    li.innerHTML = `${itemClass === 'historicalPlays__item' ? '<div>' : ''}<div class="soundBadge compact sc-media m-interactive m-playable"><span class="soundBadge__artwork sc-mr-2x sc-media-image"><div class="image image__lightOutline sc-artwork-6x sc-artwork m-loaded">${artSpan(art(t, 't120x120'), 'sc-artwork-6x')}</div>
+        <span class="soundBadge__tierIndicator tierIndicator__smallGoPlus tierIndicator__artwork ${isDrm(t) ? '' : 'sc-hidden'}"></span>
+        <span class="soundBadge__playButton"><a role="button" class="sc-button-play playButton sc-button sc-button-large" title="Play"><div><div class="pocPlayIcon">${icon('tilePlay')}</div></div></a></span></span>
+      <div class="sc-media-content soundBadge__content"><div class="soundTitle sc-clearfix sc-hyphenate sc-type-h3 sc-text-h4 m-interactive" title="${esc(t.title)}"><div class="soundTitle__titleContainer"><div class="soundTitle__usernameTitleContainer sc-mb-0.5x">
+        <div class="sc-type-light sc-text-secondary sc-text-h4 soundTitle__secondary sc-truncate">${link(t.user?.permalink, 'soundTitle__username sc-link-secondary sc-link-light', `<span class="soundTitle__usernameText">${esc(t.user?.username)}</span>`)}</div>
+        ${link(trackPath(t), 'sc-link-primary soundTitle__title sc-link-dark sc-text-h4', `<span class="sc-truncate">${esc(t.title)}</span>`, t.title)}</div></div></div>
+        <ul class="soundStats sc-ministats-group" aria-label="Track stats">${ministat('sc-ministats-plays', 'plays', t.playback_count, 'plays')}${ministat('sc-ministats-likes', 'likes', t.likes_count, 'likes')}${ministat('sc-ministats-reposts', 'reposts', t.reposts_count, 'reposts')}${ministat('sc-ministats-comments', 'comments', t.comment_count, 'comments')}</ul>
+        <div class="soundBadge__additional"><div class="soundBadge__actions"><div class="soundActions sc-button-toolbar soundActions__small"><div class="sc-button-group sc-button-group-small">
+          <button type="button" data-like="${t.id}" class="sc-button-like sc-button-secondary sc-button sc-button-small sc-button-icon sc-button-responsive${liked ? ' sc-button-selected' : ''}" title="${liked ? 'Unlike' : 'Like'}"><div>${icon('soundLike')}</div><span class="sc-button-label sc-visuallyhidden">Like</span></button>
+          <button type="button" data-more="${esc(remember(t))}" data-short="1" class="sc-button-more sc-button-secondary sc-button sc-button-small sc-button-icon sc-button-responsive" aria-haspopup="true" title="More"><div>${icon('more')}</div><span class="sc-button-label sc-visuallyhidden">More</span></button>
+        </div></div></div></div></div></div>${itemClass === 'historicalPlays__item' ? '</div>' : ''}`;
+    li.querySelector('.soundBadge__artwork').onclick = () => toggleOrPlay(i);
+    return li;
+  }
+  // "Artists you should follow": three at a time from a fetched list; refetched when it runs out.
+  const wtf = { list: [], at: 0, next: null };
+  async function paintWhoToFollow(refresh) {
+    const ul = $('wtfList');
+    if (!ul) return;
+    if (refresh) wtf.at += 3;
+    if (!wtf.list.length || wtf.at >= wtf.list.length) {
+      const page = await api(wtf.next && wtf.at ? wtf.next : '/me/suggested/users/who_to_follow', wtf.next && wtf.at ? {} : { view: 'recommended-first', limit: 21 });
+      wtf.list = (page.collection || []).map(x => x.user || x).filter(u => u?.username);
+      wtf.next = page.next_href; wtf.at = 0;
+    }
+    ul.innerHTML = wtf.list.slice(wtf.at, wtf.at + 3).map(u => `<li class="userSuggestionList__item"><div class="userSuggestion"><div class="userBadge m-horizontal${u.verified ? ' m-verified' : ''}"><div class="userBadge__avatar sc-mr-2x"><div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body">${link(u.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__lightOutline sc-artwork-6x sc-artwork image__rounded m-loaded">${artSpan((u.avatar_url || '').replace('-large.', '-t120x120.'), 'sc-artwork-6x image__rounded')}</div></div>`)}</div></div></div>
+      <div class="userBadge__content sc-media-content"><div class="userBadge__title"><h3 class="userBadge__username sc-type-light sc-link-primary sc-text-h4">${link(u.permalink, 'userBadge__usernameLink sc-link-dark sc-link-primary sc-truncate sc-mr-0.5x', `<span class="sc-truncate">${esc(u.username)}</span>`, `Visit ${u.username}’s profile`)}<div style="display:inline-block">${u.verified ? `<span class="verifiedBadge userBadge__verifiedBadge">${icon('verified')}</span>` : ''}</div></h3></div>
+        <div class="userBadge__meta"><div class="userBadge__stats sc-text-captions sc-mt-0.5x"><div aria-label="User stats" class="userStats"><ul class="sc-ministats-group">${ministat('sc-ministats-followers sc-link-secondary g-flex-row-centered', 'followers', u.followers_count, 'followers')}${ministat('sc-ministats-sounds sc-link-secondary g-flex-row-centered', 'sounds', u.track_count, 'tracks')}</ul></div></div></div></div>
+      <div class="userBadge__actions"><button type="button" data-follow="${u.id}" class="sc-button-follow sc-button sc-button-medium sc-button-cta sc-button-primary${followingIds.has(u.id) ? ' sc-button-selected' : ''}" title="Follow"><span class="sc-button-label">${followingIds.has(u.id) ? 'Following' : 'Follow'}</span></button></div></div></div></li>`).join('');
+  }
+  // Plays an artist's new tracks (the "stories" behind their New tracks avatar).
+  async function playArtistShortcut(urn) {
+    const st = await api('/me/artist-shortcuts/stories/' + urn);
+    const ids = [...new Set((st.stories || []).map(s => s.target_urn).filter(u => u?.includes(':tracks:')).map(u => u.split(':').pop()))];
+    if (!ids.length) return status('No new tracks');
+    const byId = new Map((await api('/tracks', { ids: ids.join(',') })).map(t => [String(t.id), t]));
+    await playList(ids.map(id => byId.get(id)).filter(Boolean), 'u:' + urn);
+  }
+  async function renderSidebar(token) {
+    const side = $('sidebar');
+    if (!side || !me) return;
+    const mod = (cls, inner) => `<article class="sidebarModule g-all-transitions-200-linear ${cls}">${inner}</article>`;
+    side.innerHTML = mod('artistShortcutsModule', sidebarHeader('New tracks') + '<div class="sidebarContent"><div class="artistShortcutsGallery"><div class="tileGallery m-fivePanels m-transitionsEnabled"><div class="tileGallery__slider"><div class="tileGallery__sliderPeekContainer"><div class="tileGallery__sliderPanel"></div></div></div>' + arrowBtn('fwd', 'forward') + arrowBtn('back', 'backward') + '</div></div></div>')
+      + mod('whoToFollowModule', sidebarHeader('Artists you should follow', 'Refresh list').replace('sidebar__moreLink', 'sidebar__moreLink refresh-wtf') + '<div class="sidebarContent"><div class="userSuggestionList"><ul class="sc-list-nostyle sc-clearfix" id="wtfList"></ul></div></div>')
+      + mod('likesModule', sidebarHeader(`${(me.likes_count ?? me.public_favorites_count ?? 0).toLocaleString()} likes`, 'View all', 'you/likes') + '<div class="sidebarContent"><div class="soundBadgeList compact lazyLoadingList"><ul class="sc-list-nostyle sc-clearfix" id="sideLikes"></ul></div></div>')
+      + mod('historyModule', sidebarHeader('Listening history', 'View all', 'you/history') + '<div class="sidebarContent"><div class="historicalPlays m-soundBadge lazyLoadingList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="sideHistory"></ul></div></div>');
+    side.querySelector('.refresh-wtf').onclick = e => { e.preventDefault(); paintWhoToFollow(true).catch(err => status('Error: ' + err.message)); };
+    const [shortcuts, likes, hist] = await Promise.all([
+      api('/me/artist-shortcuts', { limit: 1000 }).catch(() => ({ collection: [] })),
+      api(`/users/${me.id}/track_likes`, { limit: 10 }).catch(() => ({ collection: [] })),
+      api('/me/play-history/tracks', { limit: 3 }).catch(() => ({ collection: [] })),
+      paintWhoToFollow().catch(err => status('Error: ' + err.message)),
+    ]);
+    if (token !== viewToken) return;
+    gallery(side.querySelector('.tileGallery'), shortcuts.collection.filter(x => x.user).map((x, k) => {
+      const s = document.createElement('div');
+      s.className = 'tileGallery__sliderPanelSlide';
+      s.dataset.tileIndex = k;
+      s.innerHTML = `<div class="artistShortcutTile"><button type="button" class="artistShortcutTile__button" title="${esc(x.user.username)}"><div class="artistShortcutTile__avatar">${x.has_read ? '' : `<div>${icon('shortcutBadge')}</div>`}<div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body"><div class="g-avatar-badge-avatar"><div class="image image__lightOutline sc-artwork-8x sc-artwork image__rounded m-loaded">${artSpan((x.user.avatar_url || '').replace('-large.', '-t200x200.'), 'sc-artwork-8x image__rounded')}</div></div></div></div></div>
+        <div class="artistShortcutTile__username"><span class="sc-type-small sc-text-h4"><span class="sc-truncate">${esc(x.user.username)}</span></span></div></button></div>`;
+      s.querySelector('button').onclick = () => playArtistShortcut(x.user_urn || x.user.urn).catch(err => status('Error: ' + err.message));
+      return s;
+    }));
+    const rows = (list, ul, cls) => $(ul).append(...addTracks(list.slice(0, 3), true).map(([t, i]) => soundBadge(t, i, cls)));
+    rows(likes.collection.map(l => l.track).filter(Boolean), 'sideLikes', 'soundBadgeList__item');
+    rows(hist.collection.map(h => h.track).filter(Boolean), 'sideHistory', 'historicalPlays__item');
+    markPlaying();
+  }
+
+  // ---- Feed
+  async function viewFeed(token) {
+    const reposts = store.get('feedReposts') ?? true;
+    $('content').innerHTML = `<div><div class="l-fluid-fixed"><div class="l-main"><div class="l-content"><div class="stream">
+      <div class="stream__header g-flex-row-centered-spread sc-mb-2x sc-px-2x"><h2 class="sc-text-h3 sc-text-primary">Hear the latest posts from the people you’re following:</h2>
+        <div class="stream__filter"><div class="streamFilter__item"><span class="sc-text-secondary sc-mr-1x">Reposts</span><label class="toggle sc-toggle sc-toggle-small${reposts ? ' sc-toggle-active sc-toggle-on' : ''}" id="repostToggle"><span class="sc-toggle-handle"></span><input class="sc-toggle-input sc-visuallyhidden" type="checkbox"${reposts ? ' checked' : ''}></label></div></div></div>
+      <div class="stream__list"><div class="lazyLoadingList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="feed"></ul><div class="lazyLoadingList__sentinel"></div></div></div></div></div></div>${SIDEBAR}</div></div>`;
+    $('repostToggle').onclick = e => { e.preventDefault(); store.set('feedReposts', !reposts); route(); };
+    await paged(token, '/stream', { limit: 20 }, (page, first) => {
+      const items = page.collection.filter(x => (x.type === 'track' || (reposts && x.type === 'track-repost')) && x.track);
+      const pairs = addTracks(items.map(x => x.track), !first);
+      $('feed').append(...pairs.map(([t, i], k) => soundItem(t, i, { user: items[k].user, repost: items[k].type === 'track-repost', at: items[k].created_at })));
+      markPlaying();
+    });
+    renderSidebar(token); // after the first page, which replaces the queue the sidebar rows point into
+  }
+
+  // ---- Search
+  async function viewSearch(q, token) {
+    $('content').innerHTML = `<div><div class="l-search l-fixed-fluid"><div class="l-fixed-top"><div class="searchTitle sc-py-2x"><h1 class="searchTitle__text sc-py-1x sc-px-2x sc-text-h2"><span class="searchTitle__textContent">Search results for “${esc(q)}”</span></h1></div></div>
+      <div class="l-fluid-fixed"><div class="searchList lazyLoadingList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="results"></ul><div class="lazyLoadingList__sentinel"></div></div></div></div></div>`;
+    return paged(token, '/search/tracks', { q, limit: 20 }, (page, first) => {
+      $('results').append(...addTracks(page.collection, !first).map(([t, i]) => soundItem(t, i)));
+      markPlaying();
+    });
+  }
+
+  // ---- Profiles (/<user>[/tab])
+  const PROFILE_TABS = [['', 'All'], ['popular-tracks', 'Popular tracks'], ['tracks', 'Tracks'], ['albums', 'Albums'], ['sets', 'Playlists'], ['reposts', 'Reposts']];
+  async function viewProfile(permalink, tab, token) {
+    const u = await api('/resolve', { url: 'https://soundcloud.com/' + permalink });
+    if (token !== viewToken) return;
+    if (u.kind !== 'user') throw new Error('Not a profile: ' + permalink);
+    const banner = u.visuals?.visuals?.[0]?.visual_url;
+    const following = followingIds.has(u.id);
+    const tabs = PROFILE_TABS.map(([k, label]) => `<li class="g-tabs-item">${link(permalink + (k ? '/' + k : ''), 'g-tabs-link' + (k === tab ? ' active' : ''), label)}</li>`).join('');
+    $('content').innerHTML = `<div><div class="l-user-hero sc-px-2x"><div class="profileHeader"><div class="profileHeader__info"><div class="profileHeaderInfo sc-media">
+        <div class="profileHeaderInfo__avatar sc-media-image sc-mr-4x"><div class="image image__noOutline sc-artwork image__rounded m-loaded" style="height:198px;width:198px"><span style="background-image:url(${esc((u.avatar_url || '').replace('-large.', '-t500x500.'))});width:198px;height:198px;opacity:1" class="sc-artwork image__rounded image__full"></span></div></div>
+        <div class="profileHeaderInfo__content sc-media-content"><h2 class="profileHeaderInfo__userName g-type-shrinkwrap-block g-type-shrinkwrap-large-primary sc-text-h1 theme-dark">${esc(u.username)}${u.verified ? `<div style="display:inline-block"><span class="verifiedBadge profileHeaderInfo__verifiedBadge sc-ml-1x theme-light">${icon('verified')}</span></div>` : ''}</h2>
+          ${[u.full_name, [u.city, u.country_code].filter(Boolean).join(', ')].filter(Boolean).map(t => `<h3 class="profileHeaderInfo__additional g-type-shrinkwrap-block g-type-shrinkwrap-large-secondary sc-mt-1x">${esc(t)}</h3>`).join('')}</div></div></div>
+      <div class="profileHeaderBackground" style="${banner ? `background:url(${esc(banner)}) center/cover` : 'background:linear-gradient(315deg,#8a8f8c 0%,#2e2f2c 100%)'}"></div></div></div>
+      <div class="l-vertical-bar"><div class="userInfoBar sc-px-2x"><div class="userInfoBar__tabs"><ul class="profileTabs g-tabs g-tabs-medium">${tabs}</ul></div>
+        <div class="userInfoBar__buttons"><div class="sc-button-group">${u.id === me.id ? '' : `<button type="button" data-follow="${u.id}" class="sc-button-follow sc-button sc-button-medium sc-button-responsive ${following ? 'sc-button-selected sc-button-secondary' : 'sc-button-cta sc-button-primary'}"><span class="sc-button-label">${following ? 'Following' : 'Follow'}</span></button>`}<button type="button" data-copy="${esc(u.permalink_url)}" class="sc-button-share sc-button-secondary sc-button sc-button-medium sc-button-responsive"><span class="sc-button-label">Copy link</span></button></div></div></div></div>
+      <div class="l-fluid-fixed"><div class="l-main sc-px-2x"><p class="sc-text-secondary sc-py-2x">${count(u.followers_count)} followers · ${count(u.followings_count)} following · ${count(u.track_count)} tracks</p>
+        <div class="userMain__content lazyLoadingList">${tab === 'albums' || tab === 'sets' ? '<div class="badgeList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix" id="plist"></ul></div>' : '<ul class="soundList sc-list-nostyle" id="plist"></ul>'}<div class="lazyLoadingList__sentinel"></div></div></div></div></div>`;
+    const list = $('plist');
+    const fromStream = (page, first) => {
+      const items = page.collection.filter(x => x.track && (x.type || 'track').startsWith('track'));
+      const pairs = addTracks(items.map(x => x.track), !first);
+      list.append(...pairs.map(([t, i], k) => soundItem(t, i, items[k].type === 'track-repost' ? { user: u, repost: true, at: items[k].created_at } : null)));
+      markPlaying();
+    };
+    const fromTracks = (page, first) => { list.append(...addTracks(page.collection, !first).map(([t, i]) => soundItem(t, i))); markPlaying(); };
+    const id = u.id;
+    const [url, render] = {
+      '': [`/stream/users/${id}`, fromStream], 'popular-tracks': [`/users/${id}/toptracks`, fromTracks], tracks: [`/users/${id}/tracks`, fromTracks],
+      reposts: [`/stream/users/${id}/reposts`, fromStream],
+      albums: [`/users/${id}/albums`, page => list.append(...page.collection.map(playlistTile))],
+      sets: [`/users/${id}/playlists_without_albums`, page => list.append(...page.collection.map(playlistTile))],
+    }[tab] || [`/stream/users/${id}`, fromStream];
+    await paged(token, url, { limit: 20 }, render);
+    return { title: u.username };
+  }
+
+  // ---- Playlists (/<user>/sets/<name>) and tracks (/<user>/<track>)
+  async function fullTracks(stubs) {
+    const missing = stubs.filter(t => !t.title).map(t => t.id), found = new Map();
+    for (let k = 0; k < missing.length; k += 50) (await api('/tracks', { ids: missing.slice(k, k + 50).join(',') })).forEach(t => found.set(t.id, t));
+    return stubs.map(t => t.title ? t : found.get(t.id)).filter(Boolean);
+  }
+  async function viewSet(path, token) {
+    const p = await api('/resolve', { url: 'https://soundcloud.com/' + path });
+    if (token !== viewToken) return;
+    const tracks = await fullTracks(p.tracks || []);
+    if (token !== viewToken) return;
+    const cover = (p.artwork_url || tracks.find(t => t.artwork_url)?.artwork_url || '').replace('-large.', '-t500x500.');
+    $('content').innerHTML = `<div class="l-fluid-fixed sc-px-2x sc-pt-3x"><div class="sc-media sc-mb-3x"><div class="sc-media-image sc-mr-3x"><div class="image sc-artwork m-loaded" style="width:200px;height:200px">${artSpan(cover, '')}</div></div>
+      <div class="sc-media-content"><div class="sc-text-secondary sc-text-h4">${p.kind === 'system-playlist' ? esc(p.short_description || 'Playlist') : p.is_album ? 'Album' : 'Playlist'} · ${p.track_count ?? tracks.length} tracks</div><h1 class="sc-text-h1 sc-text-primary sc-my-1x">${esc(p.title)}</h1>${link(p.user?.permalink, 'sc-link-secondary sc-text-h3', esc(p.user?.username))}</div></div>
+      <ul class="soundList sc-list-nostyle" id="plist"></ul></div>`;
+    $('plist').append(...addTracks(tracks).map(([t, i]) => soundItem(t, i)));
+    markPlaying();
+    return { title: p.title };
+  }
+  async function viewTrack(path, token) {
+    const t = await api('/resolve', { url: 'https://soundcloud.com/' + path });
+    if (token !== viewToken) return;
+    if (t.kind !== 'track') throw new Error('Not a track: ' + path);
+    const related = await api(`/tracks/${t.id}/related`, { limit: 20 }).catch(() => ({ collection: [] }));
+    if (token !== viewToken) return;
+    $('content').innerHTML = `<div class="l-fluid-fixed sc-px-2x sc-pt-2x"><ul class="soundList sc-list-nostyle" id="plist"></ul><h2 class="sc-text-h3 sc-text-primary sc-mt-4x sc-mb-2x">Related tracks</h2><ul class="soundList sc-list-nostyle" id="rlist"></ul></div>`;
+    const pairs = addTracks([t, ...related.collection]);
+    $('plist').append(soundItem(...pairs[0]));
+    $('rlist').append(...pairs.slice(1).map(([x, i]) => soundItem(x, i)));
+    markPlaying();
+    return { title: t.title };
+  }
+
+  // Page title for the title bar pill, and which header tab is selected.
+  const PROFILE_TAB_KEYS = new Set(PROFILE_TABS.map(([k]) => k).filter(Boolean));
+  async function render(path) {
+    const token = ++viewToken;
+    const [p, qs] = path.split('?');
+    const parts = p.split('/').filter(Boolean);
+    window.scrollTo(0, 0);
+    if (p === 'search') { const q = new URLSearchParams(qs).get('q') || ''; await viewSearch(q, token); return { title: 'Search', nav: '' }; }
+    if (p === 'discover' || p === '') { await viewHome(token); return { title: 'Home', nav: 'discover' }; }
+    if (parts[0] === 'discover' && parts[1] === 'section') return { ...(await viewSection(decodeURIComponent(parts[2] || ''), token)), nav: 'discover' };
+    if (p === 'feed') { await viewFeed(token); return { title: 'Feed', nav: 'stream' }; }
+    if (parts[0] === 'you') { const tab = parts[1] || 'library'; await viewLibrary(tab, token); return { title: 'Library', nav: 'library' }; }
+    if (parts[1] === 'sets' && parts[2]) return { ...(await viewSet(p, token)), nav: '' };
+    if (parts.length === 1 || PROFILE_TAB_KEYS.has(parts[1])) return { ...(await viewProfile(parts[0], parts[1] || '', token)), nav: '' };
+    return { ...(await viewTrack(p, token)), nav: '' };
+  }
+
+  // Like / repost / follow / copy-link buttons in lists, by delegation.
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-like], [data-repost], [data-follow], [data-copy]');
+    if (!b) return;
+    e.preventDefault();
+    if (b.dataset.like) toggleLike(Number(b.dataset.like));
+    else if (b.dataset.repost) toggleRepost(Number(b.dataset.repost));
+    else if (b.dataset.follow) toggleFollow(Number(b.dataset.follow));
+    else if (b.dataset.copy) navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.title = 'Copied'; });
+  });
+
+  // Waveforms: SoundCloud serves the samples as JSON next to the PNG.
+  const waves = new Map();
+  async function drawWave(t, i, progress = 0) {
+    const c = document.querySelector(`canvas[data-i="${i}"]`);
+    if (!c || !t?.waveform_url) return;
+    let w = waves.get(t.id);
+    if (!w) {
+      try { w = await (await fetch(t.waveform_url.replace(/\.png$/, '.json'))).json(); waves.set(t.id, w); } catch { return; }
+    }
+    const g = c.getContext('2d'), W = c.width, H = c.height, bars = Math.floor(W / 3), max = w.height || 140;
+    g.clearRect(0, 0, W, H);
+    for (let b = 0; b < bars; b++) {
+      const v = w.samples[Math.floor(b / bars * w.samples.length)] / max;
+      g.fillStyle = b / bars < progress ? '#f50' : '#999';
+      const h = Math.max(2, v * H * 0.95);
+      g.fillRect(b * 3, H - h, 2, h);
+    }
+  }
+
+  // --- Playback
+  const current = () => queue[order[pos]];
+  function markPlaying() {
+    const t = current();
+    document.querySelectorAll('[data-i]:not(canvas)').forEach(el => {
+      const on = !!t && queue[Number(el.dataset.i)]?.id === t.id && !audio.paused;
+      el.querySelector('.playableTile')?.classList.toggle('m-playing', on);
+      const btn = el.querySelector('.sc-button-play');
+      btn?.classList.toggle('sc-button-pause', on);
+      const holder = el.querySelector('.pocPlayIcon');
+      if (holder) holder.innerHTML = on ? TILE_PAUSE : icon(holder.dataset.kind || 'tilePlay');
+    });
+    renderQueue();
+  }
+  function paintPlayState() {
+    $('toggleIcon').innerHTML = audio.paused ? icon('play') : PAUSE;
+    $('toggle').classList.toggle('playing', !audio.paused);
+    $('toggle').title = audio.paused ? 'Play current' : 'Pause current';
+    $('badge').classList.toggle('paused', audio.paused);
+  }
+  function toggleOrPlay(i) {
+    if (current()?.id === queue[i]?.id) return audio.paused ? audio.play() : audio.pause();
+    play(i);
+  }
+  function shuffleOrder() {
+    const cur = order[pos];
+    order = queue.map((_, i) => i).filter(i => i !== cur);
+    for (let k = order.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [order[k], order[j]] = [order[j], order[k]]; }
+    if (cur !== undefined && cur >= 0) { order.unshift(cur); pos = 0; }
+  }
+
+  const b64 = bytes => { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
+
+  async function play(i, startFraction = 0) {
+    if (i < 0 || i >= queue.length) return;
+    pos = order.indexOf(i);
+    let t = queue[i];
+    upNext = upNext.filter(x => x.id !== t.id);
+    if (!ctxIds.has(t.id)) playingCtx = null;
+    if (!t.media) t = queue[i] = (await api('/tracks', { ids: t.id }))[0];
+    showBadge(t);
+    renderQueue();
+    const full = t.media.transcodings.filter(x => !x.snipped);
+    const pick = full.find(x => x.format.protocol === 'cbc-encrypted-hls')
+      || full.find(x => x.format.protocol === 'progressive')
+      || full.find(x => x.format.protocol === 'hls' && /mp4a|mpeg/.test(x.format.mime_type));
+    if (!pick) return status(`No playable stream for “${t.title}”`);
+    const stream = await api(pick.url, { track_authorization: t.track_authorization });
+    if (hls) { hls.destroy(); hls = null; }
+    log(`play ${t.id} via ${pick.format.protocol}`);
+    if (pick.format.protocol === 'progressive') {
+      audio.src = stream.url;
+    } else {
+      const drm = pick.format.protocol === 'cbc-encrypted-hls';
+      hls = new Hls({
+        xhrSetup: (xhr, url) => { if (new URL(url).pathname.endsWith('.m3u8')) xhr.setRequestHeader('X-SC-Application-Id', appId); },
+        ...(drm && {
+          emeEnabled: true,
+          drmSystems: { 'com.apple.fps': { licenseUrl: LICENSE, serverCertificateUrl: LICENSE } },
+          licenseXhrSetup: (xhr, url, keyContext, challenge) => {
+            const u = new URL(url);
+            u.searchParams.set('license_token', stream.licenseAuthToken);
+            xhr.open('POST', u.toString(), true);
+            xhr.setRequestHeader('X-SC-Application-Id', appId);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            return `spc=${b64(challenge)}&assetId=${keyContext.decryptdata.uri.replace('skd://', '')}`;
+          },
+          licenseResponseCallback: xhr => Uint8Array.from(atob(new TextDecoder().decode(xhr.response).trim()), c => c.charCodeAt(0)),
+        }),
+      });
+      hls.on(Hls.Events.ERROR, (_, d) => log(`hls error ${d.type} ${d.details} fatal=${d.fatal} ${d.error?.message || ''}`));
+      hls.loadSource(stream.url);
+      hls.attachMedia(audio);
+    }
+    if (startFraction) audio.addEventListener('loadedmetadata', () => seekTo(startFraction), { once: true });
+    audio.play().catch(e => log('play() rejected: ' + e.message));
+  }
+  const step = d => {
+    let next = pos + d;
+    if (repeat === 'all') next = (next + order.length) % order.length;
+    if (next < 0 || next >= order.length) return;
+    play(order[next]);
+  };
+
+  function showBadge(t) {
+    $('badge').hidden = false;
+    $('badgeArt').style.backgroundImage = `url(${art(t, 't50x50')})`;
+    $('badgeUser').textContent = t.user?.username || '';
+    $('badgeTitle').firstElementChild.textContent = t.title;
+    $('badgeTitle').title = t.title;
+    paintSocial();
+  }
+  // Paints every like/repost/follow button on screen from the id sets.
+  function paintSocial() {
+    for (const b of document.querySelectorAll('[data-like]')) {
+      const on = likedIds.has(Number(b.dataset.like));
+      if (b.classList.contains('sc-button-selected') !== on) {
+        const label = b.querySelector('.sc-button-label');
+        if (label && /^\d+$/.test(label.textContent)) label.textContent = Number(label.textContent) + (on ? 1 : -1);
+        b.classList.toggle('sc-button-selected', on); b.title = on ? 'Unlike' : 'Like';
+      }
+    }
+    for (const b of document.querySelectorAll('[data-repost]')) {
+      const on = repostedIds.has(Number(b.dataset.repost));
+      if (b.classList.contains('sc-button-selected') !== on) {
+        const label = b.querySelector('.sc-button-label');
+        if (label && /^\d+$/.test(label.textContent)) label.textContent = Number(label.textContent) + (on ? 1 : -1);
+        b.classList.toggle('sc-button-selected', on); b.title = on ? 'Unpost' : 'Repost';
+      }
+    }
+    for (const b of document.querySelectorAll('[data-follow]')) {
+      const on = followingIds.has(Number(b.dataset.follow));
+      b.classList.toggle('sc-button-selected', on);
+      const label = b.querySelector('.sc-button-label');
+      if (label) label.textContent = on ? 'Following' : 'Follow';
+    }
+    const t = current();
+    if (!t) return;
+    const liked = likedIds.has(t.id), following = followingIds.has(t.user_id ?? t.user?.id);
+    $('badgeLike').classList.toggle('sc-button-selected', liked);
+    $('badgeLike').title = liked ? 'Unlike' : 'Like';
+    $('badgeFollow').classList.toggle('sc-button-selected', following);
+    $('badgeFollow').title = following ? 'Unfollow' : 'Follow';
+    $('badgeFollow').hidden = !!me && (t.user_id ?? t.user?.id) === me.id;
+  }
+
+  // --- Like / follow: the same endpoints soundcloud.com uses. Optimistic,
+  // reverted if SoundCloud refuses.
+  // Optimistic: the buttons flip at once and flip back if SoundCloud refuses.
+  async function toggleIn(set, id, path, on, off) {
+    if (!id || !me) return;
+    const was = set.has(id);
+    was ? set.delete(id) : set.add(id);
+    paintSocial();
+    try { await api(path, {}, true, was ? off : on); }
+    catch (e) { was ? set.add(id) : set.delete(id); paintSocial(); log('failed: ' + e.message); }
+  }
+  const toggleLike = (id = current()?.id) => toggleIn(likedIds, id, `/users/${me.id}/track_likes/${id}`, 'PUT', 'DELETE');
+  const toggleRepost = (id = current()?.id) => toggleIn(repostedIds, id, `/me/track_reposts/${id}`, 'PUT', 'DELETE');
+  async function toggleFollow(uid) {
+    if (typeof uid !== 'number') { const t = current(); uid = t && (t.user_id ?? t.user?.id); }
+    if (!uid || !me) return;
+    const was = followingIds.has(uid);
+    was ? followingIds.delete(uid) : followingIds.add(uid);
+    paintSocial();
+    try { await api(`/me/followings/${uid}`, {}, true, was ? 'DELETE' : 'POST'); }
+    catch (e) { was ? followingIds.add(uid) : followingIds.delete(uid); paintSocial(); log('follow failed: ' + e.message); }
+  }
+
+  // --- "Next up" panel
+  function renderQueue() {
+    const list = $('queueList');
+    if (!list || !$('playControls').classList.contains('m-queueVisible')) return;
+    const start = Math.max(0, pos);
+    list.replaceChildren(...order.slice(start, start + 50).map((qi, k) => {
+      const t = queue[qi], row = document.createElement('div');
+      row.className = 'pocQueue__item' + (k === 0 && pos >= 0 ? ' m-playing' : '');
+      row.innerHTML = `<img src="${esc(art(t, 't50x50'))}" alt=""><div class="pocQueue__meta"><div class="sc-text-h5 sc-text-secondary">${esc(t.user?.username)}</div><div class="sc-text-h5 sc-text-primary">${esc(t.title)}</div></div><div class="sc-text-h5 sc-text-secondary">${fmt(t.full_duration || t.duration)}</div>`;
+      row.onclick = () => play(qi);
+      return row;
+    }));
+  }
+  const toggleQueue = force => {
+    $('playControls').classList.toggle('m-queueVisible', force);
+    renderQueue();
+  };
+
+  // --- Timeline: track drags ourselves and seek once on release, so playback
+  // updates never pull the handle back under the pointer.
+  const setProgress = f => {
+    const pct = Math.min(100, Math.max(0, f * 100)) + '%';
+    $('bar').style.width = pct; $('handle').style.left = pct;
+  };
+  function seekTo(f) {
+    if (!audio.duration) return;
+    const t = Math.min(audio.duration - 0.5, Math.max(0, f * audio.duration));
+    seekPending = t;
+    setProgress(t / audio.duration);
+    audio.currentTime = t;
+  }
+  const timeline = $('timeline');
+  const fracAt = e => { const r = timeline.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  timeline.addEventListener('pointerdown', e => {
+    if (!audio.duration) return;
+    dragging = true;
+    try { timeline.setPointerCapture(e.pointerId); } catch {}
+    setProgress(fracAt(e));
+    $('passed').textContent = fmt(fracAt(e) * audio.duration * 1000);
+  });
+  timeline.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    setProgress(fracAt(e));
+    $('passed').textContent = fmt(fracAt(e) * audio.duration * 1000);
+  });
+  timeline.addEventListener('pointerup', e => { if (dragging) { dragging = false; seekTo(fracAt(e)); } });
+  timeline.addEventListener('pointercancel', () => { dragging = false; });
+
+  // --- Volume: SoundCloud's pop-up slider (shown by their CSS on .expanded).
+  const volumeState = store.get('volume') || (() => {
+    try { const s = JSON.parse(localStorage.getItem('V2::local::settings')); return { level: s.volume ?? 1, muted: !!s.muted }; } catch { return { level: 1, muted: false }; }
+  })();
+  audio.volume = volumeState.level; audio.muted = volumeState.muted;
+  function paintVolume() {
+    const v = audio.muted ? 0 : audio.volume;
+    $('volProgress').style.height = v * 120 + 'px';
+    $('volHandle').style.top = 10 + (1 - v) * 120 + 'px';
+    $('volume').dataset.level = Math.round(v * 10);
+    $('volume').classList.toggle('muted', audio.muted);
+    $('muteIcon').innerHTML = audio.muted || audio.volume === 0 ? MUTED : icon('volume');
+    $('mute').title = audio.muted ? 'Unmute' : 'Mute';
+  }
+  audio.addEventListener('volumechange', () => { paintVolume(); store.set('volume', { level: audio.volume, muted: audio.muted }); });
+  let volDragging = false, volHideTimer = 0;
+  const volumeEl = $('volume'), volSlider = $('volSlider');
+  const expand = on => { clearTimeout(volHideTimer); if (on) volumeEl.classList.add('expanded'); else volHideTimer = setTimeout(() => { if (!volDragging) volumeEl.classList.remove('expanded'); }, 400); };
+  volumeEl.addEventListener('mouseenter', () => expand(true));
+  volumeEl.addEventListener('mouseleave', () => expand(false));
+  const levelAt = e => { const r = $('volBg').getBoundingClientRect(); return Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height)); };
+  volSlider.addEventListener('pointerdown', e => {
+    volDragging = true;
+    try { volSlider.setPointerCapture(e.pointerId); } catch {}
+    audio.muted = false; audio.volume = levelAt(e);
+  });
+  volSlider.addEventListener('pointermove', e => { if (volDragging) audio.volume = levelAt(e); });
+  volSlider.addEventListener('pointerup', () => { volDragging = false; if (!volumeEl.matches(':hover')) expand(false); });
+  volSlider.addEventListener('pointercancel', () => { volDragging = false; });
+  const setVolume = v => { audio.muted = false; audio.volume = Math.min(1, Math.max(0, v)); };
+
+  audio.addEventListener('seeked', () => { seekPending = null; report(); });
+  audio.addEventListener('timeupdate', () => {
+    if (!audio.duration || dragging) return;
+    const t = seekPending ?? audio.currentTime;
+    setProgress(t / audio.duration);
+    $('passed').textContent = fmt(t * 1000);
+    $('dur').textContent = fmt(audio.duration * 1000);
+    const i = order[pos];
+    if (document.querySelector('.soundList__item')) drawWave(queue[i], i, t / audio.duration);
+  });
+  audio.addEventListener('play', () => { paintPlayState(); markPlaying(); report(); });
+  audio.addEventListener('pause', () => { paintPlayState(); markPlaying(); report(); });
+  audio.addEventListener('ended', () => repeat === 'one' ? (audio.currentTime = 0, audio.play()) : step(1));
+  audio.addEventListener('error', () => log(`audio error ${audio.error?.code} ${audio.error?.message}`));
+
+  // Discord presence: same "np:" message the SoundCloud-site mode sends.
+  function report() {
+    const t = current();
+    if (!t) return;
+    window.ipc?.postMessage('np:' + JSON.stringify({
+      title: t.title, author: t.user?.username || '', url: t.permalink_url,
+      artwork: art(t, 't500x500'), playing: !audio.paused,
+      elapsed: Math.round(audio.currentTime * 1000),
+      duration: Math.round((audio.duration || 0) * 1000) || t.full_duration || t.duration,
+    }));
+  }
+
+  // --- Controls and keyboard shortcuts
+  const togglePlay = () => { if (!current()) return play(order[0] ?? 0); audio.paused ? audio.play() : audio.pause(); };
+  const toggleMute = () => { audio.muted = !audio.muted; };
+  $('toggle').onclick = togglePlay;
+  $('next').onclick = () => step(1);
+  $('prev').onclick = () => audio.currentTime > 3 ? seekTo(0) : step(-1);
+  $('mute').onclick = toggleMute;
+  $('shuffle').onclick = () => {
+    shuffle = !shuffle;
+    $('shuffle').classList.toggle('m-shuffling', shuffle);
+    $('shuffle').title = shuffle ? 'Shuffle on' : 'Shuffle';
+    if (shuffle) shuffleOrder(); else { const cur = order[pos]; order = queue.map((_, i) => i); pos = cur ?? -1; }
+    renderQueue();
+  };
+  $('repeat').onclick = () => {
+    repeat = { none: 'all', all: 'one', one: 'none' }[repeat];
+    $('repeat').classList.toggle('m-all', repeat === 'all');
+    $('repeat').classList.toggle('m-one', repeat === 'one');
+    $('repeat').title = { none: 'Repeat', all: 'Repeat all', one: 'Repeat track' }[repeat];
+  };
+  $('badgeLike').onclick = () => toggleLike();
+  $('badgeFollow').onclick = () => toggleFollow();
+  $('showQueue').onclick = e => { e.preventDefault(); toggleQueue(); };
+  $('queueHide').onclick = () => toggleQueue(false);
+  $('searchForm').onsubmit = e => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) go('search?q=' + encodeURIComponent(q)); };
+  // Every in-app link carries its route in data-href; other links never navigate the page.
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (!a || e.defaultPrevented) return;
+    e.preventDefault();
+    if (a.dataset.href !== undefined && a.dataset.href !== 'undefined') go(a.dataset.href);
+  });
+
+  // --- Navigation: our own back/forward list. WebKit keeps no history for a
+  // page loaded from an HTML string (pushState isn't recorded), so the title
+  // bar's buttons walk this instead.
+  const navStack = ['discover'];
+  let navIndex = 0;
+  const pathNow = () => navStack[navIndex];
+  async function route() {
+    const path = pathNow();
+    const search = path.startsWith('search') && new URLSearchParams(path.split('?')[1] || '').get('q');
+    $('tabPath').textContent = search ? 'search?q=' + search : path;
+    $('searchForm').q.value = search || '';
+    $('refreshBtn').classList.add('refreshing');
+    try {
+      const { title = '', nav = '' } = (await render(path)) || {};
+      if (path !== pathNow()) return;
+      $('tabTitle').textContent = title;
+      document.title = (title ? title + ' | ' : '') + 'SoundCloud';
+      document.querySelectorAll('.header__navMenuItem').forEach(a => a.classList.toggle('selected', a.dataset.menuName === nav));
+      paintSocial();
+    } catch (err) { status('Error: ' + err.message); $('content').innerHTML = `<p class="sc-text-secondary sc-p-4x">Couldn’t load this page: ${esc(err.message)}</p>`; }
+    finally { $('refreshBtn').classList.remove('refreshing'); }
+  }
+  const paintNav = () => {
+    $('backBtn').classList.toggle('disabled', navIndex <= 0);
+    $('fwdBtn').classList.toggle('disabled', navIndex >= navStack.length - 1);
+  };
+  function go(path) {
+    if (path === pathNow()) return route();
+    navStack.splice(++navIndex, Infinity, path);
+    paintNav();
+    return route();
+  }
+  const walk = d => {
+    const i = navIndex + d;
+    if (i < 0 || i >= navStack.length) return;
+    navIndex = i;
+    paintNav();
+    route();
+  };
+  $('backBtn').onclick = () => walk(-1);
+  $('fwdBtn').onclick = () => walk(1);
+  $('refreshBtn').onclick = () => route();
+
+  // Title bar: drag the window from empty space, double-click to zoom.
+  $('titlebar').addEventListener('mousedown', e => {
+    if (e.button !== 0 || e.target.closest('.nav-button, .tab-group, .pocSearch')) return;
+    if (e.detail === 2) window.ipc?.postMessage('zoom'); else window.ipc?.postMessage('drag');
+  });
+
+  // --- Settings: saved by the Rust side (settings.json).
+  const settings = Object.assign({ navButtons: true, theme: 'dark', discord: true, adblock: true }, window.__settings || {});
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  function applySettings() {
+    $('navControls').classList.toggle('hidden', !settings.navButtons);
+    const dark = settings.theme === 'system' ? darkQuery.matches : settings.theme !== 'light';
+    document.body.classList.toggle('theme-dark', dark);
+    document.body.classList.toggle('theme-light', !dark);
+  }
+  darkQuery.addEventListener('change', applySettings);
+  for (const el of document.querySelectorAll('[data-setting]')) {
+    const key = el.dataset.setting;
+    if (el.type === 'checkbox') el.checked = !!settings[key]; else el.value = settings[key];
+    el.addEventListener('change', () => {
+      settings[key] = el.type === 'checkbox' ? el.checked : el.value;
+      applySettings();
+      window.ipc?.postMessage('settings:' + JSON.stringify(settings));
+    });
+  }
+  for (const b of document.querySelectorAll('#settingsTabs button')) b.onclick = () => {
+    document.querySelectorAll('#settingsTabs button').forEach(x => x.classList.toggle('active', x === b));
+    document.querySelectorAll('.pocSettings section').forEach(sec => { sec.hidden = sec.dataset.tab !== b.dataset.tab; });
+  };
+  const toggleSettings = force => $('settings').classList.toggle('visible', force);
+
+  // Last.fm: the Rust side signs in (browser approval) and scrobbles.
+  let lastfm = window.__lastfm || { connected: false };
+  window.__lastfmStatus = st => {
+    if ('connected' in st) lastfm = st;
+    $('lfmSetup').hidden = !!lastfm.connected;
+    $('lfmConnected').hidden = !lastfm.connected;
+    $('lfmName').textContent = lastfm.name || '';
+    $('lfmConnect').disabled = st.state === 'waiting';
+    $('lfmStatus').textContent = { waiting: 'Approve the app in the browser window that just opened…', error: 'Could not connect: ' + st.message, connected: '' }[st.state] ?? '';
+    if (st.state === 'connected') { $('lfmSecret').value = ''; if (!settings.lastfm) document.querySelector('[data-setting="lastfm"]').click(); }
+  };
+  window.__lastfmStatus(lastfm);
+  $('lfmConnect').onclick = () => window.ipc?.postMessage('lastfm:connect:' + JSON.stringify({ key: $('lfmKey').value, secret: $('lfmSecret').value }));
+  $('lfmDisconnect').onclick = () => window.ipc?.postMessage('lastfm:disconnect');
+  document.querySelectorAll('[data-external]').forEach(a => a.onclick = e => { e.preventDefault(); window.ipc?.postMessage('open:' + a.dataset.external); });
+  $('menuBtn').onclick = () => toggleSettings();
+  $('settingsClose').onclick = () => toggleSettings(false);
+  applySettings();
+
+  // SoundCloud's shortcuts (where we have the feature).
+  document.addEventListener('keydown', e => {
+    if (e.metaKey && !e.shiftKey && !e.altKey) {
+      const cmd = { '[': () => $('backBtn').click(), ']': () => $('fwdBtn').click(), r: () => route(), ',': () => toggleSettings(), f: () => $('searchForm').q.focus() }[e.key];
+      if (cmd) { e.preventDefault(); cmd(); }
+      return;
+    }
+    if (e.key === 'Escape' && $('settings').classList.contains('visible')) return toggleSettings(false);
+    if (e.target.closest?.('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (k === ' ') togglePlay();
+    else if (/^[0-9]$/.test(k)) seekTo(Number(k) / 10);
+    else if (k === 'ArrowRight' && e.shiftKey) step(1);
+    else if (k === 'ArrowLeft' && e.shiftKey) step(-1);
+    else if (k === 'ArrowRight' && audio.duration) seekTo((audio.currentTime + 5) / audio.duration);
+    else if (k === 'ArrowLeft' && audio.duration) seekTo((audio.currentTime - 5) / audio.duration);
+    else if (k === 'ArrowUp' && e.shiftKey) setVolume(audio.volume + 0.1);
+    else if (k === 'ArrowDown' && e.shiftKey) setVolume(audio.volume - 0.1);
+    else if (k === 'm' || k === 'M') toggleMute();
+    else if (k === 'l' || k === 'L') toggleLike();
+    else if (k === 'r' || k === 'R') toggleRepost();
+    else if (k === 'q' || k === 'Q') toggleQueue();
+    else return;
+    e.preventDefault();
+  });
+
+  paintPlayState(); paintVolume();
+
+  // For stdin-driven tests.
+  window.__poc = { api, play, seekTo, go, render, audio, toggleLike, toggleFollow, toggleQueue, toggleSettings, settings, get queue() { return queue; }, get current() { return current(); } };
+
+  (async () => {
+    applyAssets(store.get('assets'));
+    if (!token) return status('Not signed in: sign in once with the normal SoundCloud view first.');
+    if (!clientId || !store.get('assets')) await refreshFromSite();
+    else await refreshFromSite().catch(e => log('asset refresh failed: ' + e.message));
+    const version = HARVEST_REV + ' ' + (store.get('assets')?.css || []).join(' ');
+    if (window.__scStylesVersion !== version || !ICONS.play) harvest(version).catch(e => log('harvest failed: ' + e.message));
+    me = await api('/me');
+    $('meAvatar').style.backgroundImage = `url(${me.avatar_url})`;
+    allIds('/me/track_likes/ids').then(ids => { ids.forEach(id => likedIds.add(id)); paintSocial(); }).catch(e => log('like ids: ' + e.message));
+    allIds('/me/track_reposts/ids').then(ids => { repostedIds = ids; paintSocial(); }).catch(e => log('repost ids: ' + e.message));
+    allIds(`/users/${me.id}/followings/ids`).then(ids => { followingIds = ids; paintSocial(); }).catch(e => log('following ids: ' + e.message));
+    paintNav();
+    await route();
+  })().catch(e => status('Error: ' + e.message));
+})();
+</script>
+</body>
+</html>
