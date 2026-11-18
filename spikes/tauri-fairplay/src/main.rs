@@ -143,6 +143,9 @@ fn main() -> wry::Result<()> {
                 if url.starts_with("https://") {
                     let _ = std::process::Command::new("open").arg(url).spawn();
                 }
+            } else if body == "reload" {
+                // signed in or out in an embedded SoundCloud page: start over with that session
+                let _ = page_proxy.send_event(Ev::Load);
             } else if body == "drag" {
                 let _ = page_proxy.send_event(Ev::Drag);
             } else if body == "zoom" {
