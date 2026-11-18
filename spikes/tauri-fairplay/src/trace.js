@@ -10,13 +10,47 @@
 
   say(`UA ${navigator.userAgent}`);
   say(`ManagedMediaSource visible: ${'ManagedMediaSource' in window}`);
-  const cfg = [{ initDataTypes: ['sinf', 'skd'], audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }] }];
+  // Each key system with its own init data type (FairPlay: skd, the rest: cenc).
+  const cfg = types => [{ initDataTypes: types, audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }] }];
   (async () => {
-    for (const ks of ['com.apple.fps', 'com.widevine.alpha']) {
-      try { await navigator.requestMediaKeySystemAccess(ks, cfg); say(`EME ${ks}: yes`); }
-      catch (e) { say(`EME ${ks}: no (${e.name})`); }
+    for (const [ks, types] of [['com.apple.fps', ['sinf', 'skd']], ['com.widevine.alpha', ['cenc']],
+      ['com.microsoft.playready.recommendation', ['cenc']], ['com.microsoft.playready', ['cenc']]]) {
+      try { await navigator.requestMediaKeySystemAccess(ks, cfg(types)); say(`EME ${ks}: yes`); }
+      catch (e) { say(`EME ${ks}: no (${e.name}: ${e.message})`); }
     }
   })();
+  // Licence requests and the stream protocols api-v2 offers (for the Go+ test).
+  const f = window.fetch;
+  window.fetch = function (input, init) {
+    const url = String(input?.url || input);
+    if (/license|widevine|playready/i.test(url)) say(`fetch ${init?.method || 'GET'} ${url.slice(0, 160)} headers=${JSON.stringify(init?.headers || {})}`);
+    const p = f.apply(this, arguments);
+    if (/license|widevine|playready/i.test(url)) p.then(r => say(`fetch -> ${r.status} ${url.slice(0, 100)}`), e => say(`fetch failed ${e}`));
+    if (/api-v2\.soundcloud\.com\/(tracks|media)/.test(url)) p.then(r => r.clone().text()).then(transcodings).catch(() => {});
+    return p;
+  };
+  // the stream protocols a track offers (Go+ ones are *-encrypted-hls)
+  const transcodings = text => {
+    try {
+      const j = JSON.parse(text), list = Array.isArray(j) ? j : j?.collection || [j];
+      for (const t of list) {
+        const tc = t?.media?.transcodings || [];
+        if (tc.length) say(`transcodings ${t.id} ${t.monetization_model || ''}: ${[...new Set(tc.map(x => `${x.format?.protocol}/${x.preset}`))].join(' ')}`);
+      }
+    } catch {}
+  };
+  const xo = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (m, u) {
+    u = String(u);
+    if (/license|widevine|playready/i.test(u)) {
+      say(`xhr ${m} ${u.slice(0, 160)}`);
+      this.addEventListener('loadend', () => say(`xhr -> ${this.status} ${u.slice(0, 100)} ${String(this.response?.byteLength ?? this.responseText?.length ?? '')}`));
+    }
+    if (/api-v2\.soundcloud\.com\/tracks/.test(u)) this.addEventListener('load', () => typeof this.response === 'string' && transcodings(this.response));
+    // what the stream URL request returns (the m3u8 address and any licence token)
+    if (/api-v2\.soundcloud\.com\/media\//.test(u)) this.addEventListener('load', () => say(`media ${u.split('?')[0].split('/').slice(-3).join('/')} -> ${String(this.responseText).replace(/"(url|licenseAuthToken)":"[^"]{40,}"/g, '"$1":"…"').slice(0, 200)}`));
+    return xo.apply(this, arguments);
+  };
 
   // Media element (SoundCloud's is detached from the DOM: hook prototypes).
   const kind = s => !s ? '(none)' : s.startsWith('blob:') ? 'blob(MSE)' : 'url';
@@ -44,6 +78,11 @@
   } });
 
   // EME
+  const rmksa = navigator.requestMediaKeySystemAccess.bind(navigator);
+  navigator.requestMediaKeySystemAccess = (ks, c) => {
+    say(`EME page asks ${ks} ${JSON.stringify(c).slice(0, 200)}`);
+    return rmksa(ks, c).then(a => { say(`EME page got ${ks}`); return a; }, e => { say(`EME page refused ${ks}: ${e.name} ${e.message}`); throw e; });
+  };
   const gr = MediaKeySession.prototype.generateRequest;
   MediaKeySession.prototype.generateRequest = function (type) {
     say(`EME generateRequest ${type}`);

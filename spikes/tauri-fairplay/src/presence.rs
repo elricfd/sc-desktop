@@ -1,11 +1,17 @@
 // Discord Rich Presence over Discord's local IPC socket (frames of
-// little-endian op + length + JSON). Same client ID and activity shape as the
-// Electron app's presenceService.
+// little-endian op + length + JSON; a unix socket, on Windows a named pipe).
+// Same client ID and activity shape as the Electron app's presenceService.
 use serde_json::{Value, json};
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::sync::mpsc::Receiver;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+type Conn = std::os::unix::net::UnixStream;
+// Note: a pipe opened as a File has no read timeout, so a hung Discord
+// stalls this thread (nothing else); overlapped I/O if that ever shows up.
+#[cfg(windows)]
+type Conn = std::fs::File;
 
 const CLIENT_ID: &str = "1090770350251458592";
 /// Sent instead of now-playing JSON to clear the status (Discord switched off).
@@ -13,7 +19,7 @@ pub const CLEAR: &str = "__clear";
 
 /// Runs until the sender is dropped. Each message is the page's now-playing JSON.
 pub fn run(rx: Receiver<String>) {
-    let mut conn: Option<UnixStream> = None;
+    let mut conn: Option<Conn> = None;
     while let Ok(mut msg) = rx.recv() {
         // Discord allows 5 updates per 20 s: let a burst of skips settle and
         // send only the latest state.
@@ -124,18 +130,29 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-fn connect() -> Option<UnixStream> {
+#[cfg(unix)]
+fn open(i: u32) -> Option<Conn> {
     let dir = std::env::var("XDG_RUNTIME_DIR").or_else(|_| std::env::var("TMPDIR")).unwrap_or_else(|_| "/tmp".into());
+    let c = Conn::connect(format!("{}/discord-ipc-{i}", dir.trim_end_matches('/'))).ok()?;
+    c.set_read_timeout(Some(std::time::Duration::from_secs(5))).ok()?;
+    Some(c)
+}
+
+#[cfg(windows)]
+fn open(i: u32) -> Option<Conn> {
+    std::fs::OpenOptions::new().read(true).write(true).open(format!(r"\\.\pipe\discord-ipc-{i}")).ok()
+}
+
+fn connect() -> Option<Conn> {
     (0..10).find_map(|i| {
-        let mut c = UnixStream::connect(format!("{}/discord-ipc-{i}", dir.trim_end_matches('/'))).ok()?;
-        c.set_read_timeout(Some(std::time::Duration::from_secs(5))).ok()?;
+        let mut c = open(i)?;
         send(&mut c, 0, &json!({ "v": 1, "client_id": CLIENT_ID })).ok()?;
         recv(&mut c).ok()?; // READY
         Some(c)
     })
 }
 
-fn send(c: &mut UnixStream, op: u32, payload: &Value) -> std::io::Result<()> {
+fn send(c: &mut Conn, op: u32, payload: &Value) -> std::io::Result<()> {
     let body = payload.to_string();
     let mut frame = Vec::with_capacity(8 + body.len());
     frame.extend_from_slice(&op.to_le_bytes());
@@ -144,7 +161,7 @@ fn send(c: &mut UnixStream, op: u32, payload: &Value) -> std::io::Result<()> {
     c.write_all(&frame)
 }
 
-fn recv(c: &mut UnixStream) -> std::io::Result<Value> {
+fn recv(c: &mut Conn) -> std::io::Result<Value> {
     let mut head = [0u8; 8];
     c.read_exact(&mut head)?;
     let op = u32::from_le_bytes(head[..4].try_into().unwrap());

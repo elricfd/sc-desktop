@@ -1,8 +1,9 @@
 // Last.fm scrobbling, ported from the Electron app's lastFmService.ts: your own
 // API key and secret, approval on last.fm in the default browser (back through
 // a one-off 127.0.0.1 address), then "now playing" + scrobbles signed with the
-// secret. Secret and session key live in the macOS Keychain; only the user
-// name is kept in a plain file, so the page can show it without a Keychain read.
+// secret. Secret and session key live in the OS keychain (macOS Keychain,
+// Windows Credential Manager); only the user name is kept in a plain file, so
+// the page can show it without a keychain read.
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -76,7 +77,7 @@ pub fn connect(api_key: String, secret: String, notify: impl Fn(Value) + Send + 
             let port = listener.local_addr().map_err(|e| e.to_string())?.port();
             let cb = format!("http%3A%2F%2F127.0.0.1%3A{port}%2Flastfm");
             let url = format!("https://www.last.fm/api/auth/?api_key={api_key}&cb={cb}");
-            std::process::Command::new("open").arg(&url).spawn().map_err(|e| e.to_string())?;
+            crate::open_url(&url)?;
             notify(json!({ "state": "waiting" }));
             listener.set_nonblocking(true).map_err(|e| e.to_string())?;
             let deadline = Instant::now() + Duration::from_secs(300);

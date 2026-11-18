@@ -75,6 +75,30 @@
   .pocTitlebar .pocSearch { display: flex; align-items: center; gap: 6px; width: 198px; height: 22px; margin-right: 8px; padding: 0 8px; border-radius: 6px; background: var(--hover-bg); }
   .pocTitlebar .pocSearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
   .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
+  /* The tab doubles as the URL bar (Electron header.js editUrl). */
+  .pocTitlebar .tab { cursor: text; }
+  .pocTitlebar .tab-url { display: none; flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
+  .pocTitlebar .tab.editing .tab-title, .pocTitlebar .tab.editing .tab-path { display: none; }
+  .pocTitlebar .tab.editing .tab-url { display: block; }
+  /* Windows (Electron header's platform-win32 layout): no traffic lights; URL
+     bar beside the nav buttons; window buttons at the far right of a frameless
+     window, which the page resizes from its edges (WebView2 covers it all). */
+  .pocTitlebar .window-controls, .pocEdge { display: none; }
+  body.platform-win .pocTitlebar { grid-template-columns: auto minmax(0, auto) minmax(min-content, 1fr); }
+  body.platform-win .pocTitlebar .header-side:first-child { padding-left: 8px; }
+  body.platform-win .pocTitlebar .header-side:first-child .title-bar { flex: 0 0 8px; min-width: 8px; }
+  body.platform-win .pocTitlebar .header-side:last-child { padding-right: 0; }
+  body.platform-win .pocTitlebar .window-controls { display: flex; align-self: stretch; margin-left: 4px; }
+  .pocTitlebar .window-controls button { width: 46px; height: 100%; padding: 0; border: 0; background: transparent; color: var(--header-text); font: 10px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; cursor: default; }
+  .pocTitlebar .window-controls button:hover { background: var(--hover-bg); }
+  .pocTitlebar .window-controls .close:hover { background: #e81123; color: #fff; }
+  body.platform-win:not(.maximized) .pocEdge { display: block; position: fixed; z-index: 10002; }
+  .pocEdge[data-edge=n], .pocEdge[data-edge=s] { left: 6px; right: 6px; height: 4px; cursor: ns-resize; }
+  .pocEdge[data-edge=e], .pocEdge[data-edge=w] { top: 6px; bottom: 6px; width: 4px; cursor: ew-resize; }
+  .pocEdge[data-edge=n] { top: 0; } .pocEdge[data-edge=s] { bottom: 0; } .pocEdge[data-edge=e] { right: 0; } .pocEdge[data-edge=w] { left: 0; }
+  .pocEdge[data-edge$=e][data-edge^=n], .pocEdge[data-edge$=w][data-edge^=n], .pocEdge[data-edge$=e][data-edge^=s], .pocEdge[data-edge$=w][data-edge^=s] { width: 6px; height: 6px; }
+  .pocEdge[data-edge=nw] { top: 0; left: 0; cursor: nwse-resize; } .pocEdge[data-edge=se] { bottom: 0; right: 0; cursor: nwse-resize; }
+  .pocEdge[data-edge=ne] { top: 0; right: 0; cursor: nesw-resize; } .pocEdge[data-edge=sw] { bottom: 0; left: 0; cursor: nesw-resize; }
   .header.fixed { top: 32px !important; }
   /* SoundCloud pins the search heading under its own header; ours sits lower. */
   .l-search .l-fixed-top { position: static !important; }
@@ -134,14 +158,17 @@
     <div class="title-bar"></div>
   </div>
   <div class="header-center">
-    <div class="tab-group"><div class="tab active"><div class="tab-icon" data-icon="logoIcon"></div><span class="tab-title" id="tabTitle">Library</span><span class="tab-path" id="tabPath">you/likes</span></div></div>
+    <div class="tab-group"><div class="tab active"><div class="tab-icon" data-icon="logoIcon"></div><span class="tab-title" id="tabTitle">Library</span><span class="tab-path" id="tabPath">you/likes</span><input class="tab-url" id="tabUrl" spellcheck="false" aria-label="Address"></div></div>
   </div>
   <div class="header-side">
     <div class="title-bar"></div>
     <form class="pocSearch" id="searchForm"><svg width="12" height="12" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input name="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></form>
     <div class="nav-button" id="menuBtn" title="Settings"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.75 4.5h10.5M2.75 8h10.5M2.75 11.5h10.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
+    <div class="window-controls" id="windowControls"><button type="button" class="minimize" id="minBtn" title="Minimize" aria-label="Minimize">&#xE921;</button><button type="button" class="maximize" id="maxBtn" title="Maximize" aria-label="Maximize">&#xE922;</button><button type="button" class="close" id="closeBtn" title="Close" aria-label="Close">&#xE8BB;</button></div>
   </div>
 </div>
+<!-- Resize edges of the frameless Windows window. -->
+<div class="pocEdge" data-edge="n"></div><div class="pocEdge" data-edge="s"></div><div class="pocEdge" data-edge="e"></div><div class="pocEdge" data-edge="w"></div><div class="pocEdge" data-edge="ne"></div><div class="pocEdge" data-edge="nw"></div><div class="pocEdge" data-edge="se"></div><div class="pocEdge" data-edge="sw"></div>
 
 <!-- Settings: only options that work in this app. Layout and styles from the
      Electron app's panel (src/settings). -->
@@ -292,6 +319,8 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
+  // macOS: WKWebView, FairPlay, ⌘ shortcuts. Windows: WebView2, PlayReady, Ctrl, our own window buttons.
+  const isMac = /Mac/.test(navigator.platform), isWin = /Win/.test(navigator.platform);
   const log = m => window.ipc?.postMessage('[ui] ' + m);
   const audio = $('audio');
   const API = 'https://api-v2.soundcloud.com';
@@ -325,7 +354,7 @@
   // On SoundCloud's round play button (the circle is the button's CSS background).
   const PAUSE = '<svg class="ic" viewBox="0 0 16 16"><path d="M4.5 3.5h2.25v9H4.5zm4.75 0h2.25v9H9.25z"/></svg>';
   const TILE_PAUSE = '<svg class="ic" viewBox="0 0 24 24"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>';
-  const MUTED = '<svg class="ic" viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2zm9.3-.7L13 7l1.7-1.7.7.7L13.7 7.7l1.7 1.7-.7.7L13 8.4l-1.7 1.7-.7-.7 1.7-1.7-1.7-1.7z"/></svg>';
+  const MUTED = '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M2 6h3l4-3v10l-4-3H2zm9.3-.7L13 7l1.7-1.7.7.7L13.7 7.7l1.7 1.7-.7.7L13 8.4l-1.7 1.7-.7-.7 1.7-1.7-1.7-1.7z"/></svg>';
   const ICONS = window.__scIcons || {};
   const icon = k => ICONS[k] || FALLBACK[k] || '';
   const paintIcons = () => document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
@@ -344,7 +373,7 @@
   const applyAssets = a => {
     if (!a) return;
     for (const href of a.css) if (!document.querySelector(`link[href="${href}"]`)) {
-      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l);
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.insertBefore(l, $('sc-styles'));
     }
   };
   async function refreshFromSite() {
@@ -629,14 +658,14 @@
     return li;
   }
 
-  function userTile(u) {
+  function userTile(u, follow = true) {
     const li = document.createElement('li');
     li.className = 'badgeList__item';
     const following = followingIds.has(u.id);
     li.innerHTML = `<div class="userBadgeListItem"><div class="userBadgeListItem__artwork">${link(u.permalink, 'userBadgeListItem__image', `<div class="image image__lightOutline sc-artwork image__rounded m-loaded" style="height:100%;width:100%"><span style="background-image:url(${esc((u.avatar_url || '').replace('-large.', '-t200x200.'))});width:100%;height:100%;opacity:1" class="sc-artwork image__rounded image__full"></span></div>`)}</div>
       <div class="userBadgeListItem__title sc-mt-2x sc-mb-0.25x">${link(u.permalink, 'userBadgeListItem__heading sc-type-small sc-text-h4 sc-link-dark sc-link-primary sc-truncate', esc(u.username), 'Visit ' + u.username + '’s profile')}</div>
       <div class="userBadgeListItem__subtitle sc-mb-1x"><div class="userStats"><ul class="sc-ministats-group"><li class="sc-ministats-item"><span class="sc-ministats sc-ministats-small sc-link-secondary sc-ministats-followers g-flex-row-centered"><div style="display:inline-block;width:16px;height:16px;vertical-align:middle;margin-right:2px">${icon('followers')}</div><span>${count(u.followers_count)} followers</span></span></li></ul></div></div>
-      <div class="userBadgeListItem__action sc-mb-1.5x"><button type="button" class="sc-button-follow sc-button sc-button-medium sc-button-primary${following ? ' sc-button-selected' : ''}" data-follow="${u.id}"><span class="sc-button-label">${following ? 'Following' : 'Follow'}</span></button></div></div>`;
+      ${!follow || u.id === me?.id ? '' : `<div class="userBadgeListItem__action sc-mb-1.5x"><button type="button" class="sc-button-follow sc-button sc-button-medium sc-button-primary${following ? ' sc-button-selected' : ''}" data-follow="${u.id}"><span class="sc-button-label">${following ? 'Following' : 'Follow'}</span></button></div>`}</div>`;
     return li;
   }
 
@@ -776,7 +805,7 @@
   // A Home item as the element SoundCloud shows for it (track, user or playlist tile).
   function homeItem(x) {
     if (x.kind === 'track') { const [[t, i]] = addTracks([x], true); const el = tile(t, i).firstElementChild; el.dataset.i = i; return el; }
-    if (x.kind === 'user') return userTile(x).firstElementChild;
+    if (x.kind === 'user') return userTile(x, false).firstElementChild;
     return homeTile(x);
   }
   let homeSels = null; // the last /mixed-selections, for "See all"
@@ -1180,15 +1209,19 @@
     if (other) await showConversation(other, token);
   }
   async function showConversation(other, token) {
-    const [c, msgs] = await Promise.all([api(convPath(other)), api(convPath(other) + '/messages', { limit: 50, linked_partitioning: 1 })]);
+    // No conversation yet (Message on someone you haven't written to): its GET
+    // fails (502); show them with an empty thread, the first send starts it.
+    const c = await api(convPath(other)).catch(() => null);
+    const msgs = c ? await api(convPath(other) + '/messages', { limit: 50, linked_partitioning: 1 }) : { collection: [] };
+    const u = c ? partner(c) : await api('/users/' + encodeURIComponent(other));
     if (token !== viewToken) return;
-    const u = partner(c), canReply = other !== 'system';
+    const canReply = other !== 'system';
     $('conv').innerHTML = `<div class="conversation__stickyHeader"><div class="conversation__actions sc-border-box g-z-index-content"><div class="conversationActions sc-py-1x sc-px-2x g-flex-row"><div class="conversationActions__user g-flex-row-centered sc-truncate"><div class="conversationParticipant sc-truncate sc-type-h3 sc-text-h3 sc-pb-1x sc-py-0.75x">${u.permalink ? link(u.permalink, 'sc-link-dark sc-link-primary', esc(u.username)) : esc(u.username || 'SoundCloud')}</div></div></div></div></div>
       <div class="conversation__messages"><div class="conversationMessages sc-mt-1x lazyLoadingList"><ul class="lazyLoadingList__list sc-list-nostyle sc-clearfix">${msgs.collection.slice().reverse().map(messageItem).join('')}</ul></div></div>
       ${canReply ? `<div class="composeMessage sc-px-2x sc-pb-2x"><div class="textfield composeTextfield"><div class="textfield__inputWrapper"><textarea id="msgText" class="textfield__input sc-input sc-input-medium" rows="3" style="width:100%;box-sizing:border-box;resize:vertical" placeholder="Write your message and add tracks or playlists"></textarea></div></div>
         <div class="composeMessage__bottomWrapper"><div class="composeMessage__toolbar sc-clearfix sc-mt-1x"><button type="button" id="msgSend" class="composeMessage__sendButton sc-button-cta sc-button-primary sc-button sc-button-medium" style="float:right">Send</button></div></div></div>` : ''}`;
     // Showing a conversation marks it read, as theirs does (conversation.markAsRead: PUT read=true, form-encoded).
-    api(convPath(other), {}, true, 'PUT', new URLSearchParams({ read: 'true' }))
+    if (c) api(convPath(other), {}, true, 'PUT', new URLSearchParams({ read: 'true' }))
       .then(() => { document.querySelector(`.inboxItem[data-conv="${CSS.escape(other)}"]`)?.classList.remove('unread'); return checkUnread(); })
       .catch(err => status('Error: ' + err.message));
     if (!canReply) return;
@@ -1213,8 +1246,10 @@
   function prepFrame(w) {
     if (w.__pocPrep || !w.document.documentElement) return;
     w.__pocPrep = true;
+    // promotions etc.: the init script misses frames that keep their about:blank window (WebView2)
+    try { w.eval(window.__cleanJs || ''); } catch {}
     const st = w.document.createElement('style');
-    st.textContent = 'header.header, .playControls, .l-footer, .l-product-banners { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; }';
+    st.textContent = 'header.header, .playControls, .l-footer, .l-product-banners { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; } .l-top { top: 0 !important; }'; // .l-top: pinned under their (hidden) 46px header
     w.document.documentElement.appendChild(st);
     const P = w.HTMLMediaElement.prototype, play = P.play;
     P.play = function () { frameMedia.add(this); audio.pause(); return play.apply(this, arguments); };
@@ -1567,13 +1602,16 @@
     if (!w) {
       try { w = await (await fetch(t.waveform_url.replace(/\.png$/, '.json'))).json(); waves.set(t.id, w); } catch { return; }
     }
-    const g = c.getContext('2d'), W = c.width, H = c.height, bars = Math.floor(W / 3), max = w.height || 140;
+    // SoundCloud's 2 px bars with 1 px gaps, drawn at the canvas's real size and pixel ratio
+    const dpr = devicePixelRatio || 1, cw = Math.round((c.clientWidth || c.width / 2) * dpr), ch = Math.round((c.clientHeight || 60) * dpr);
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    const g = c.getContext('2d'), W = c.width, H = c.height, pitch = 3 * dpr, bars = Math.floor(W / pitch), max = w.height || 140;
     g.clearRect(0, 0, W, H);
     for (let b = 0; b < bars; b++) {
       const v = w.samples[Math.floor(b / bars * w.samples.length)] / max;
       g.fillStyle = b / bars < progress ? '#f50' : '#999';
-      const h = Math.max(2, v * H * 0.95);
-      g.fillRect(b * 3, H - h, 2, h);
+      const h = Math.max(2 * dpr, v * H * 0.95), x = Math.round(b * pitch);
+      g.fillRect(x, H - h, Math.round(b * pitch + 2 * dpr) - x, h);
     }
   }
 
@@ -1628,7 +1666,10 @@
     showBadge(t);
     renderQueue();
     const full = t.media.transcodings.filter(x => !x.snipped);
-    const pick = full.find(x => x.format.protocol === 'cbc-encrypted-hls')
+    // Encrypted streams: FairPlay (cbc) in WKWebView, PlayReady (ctr) in WebView2,
+    // whose Widevine SoundCloud's licence server refuses (403).
+    const encrypted = isMac ? 'cbc-encrypted-hls' : 'ctr-encrypted-hls';
+    const pick = full.find(x => x.format.protocol === encrypted)
       || full.find(x => x.format.protocol === 'progressive')
       || full.find(x => x.format.protocol === 'hls' && /mp4a|mpeg/.test(x.format.mime_type));
     if (!pick) return status(`No playable stream for “${t.title}”`);
@@ -1638,10 +1679,20 @@
     if (pick.format.protocol === 'progressive') {
       audio.src = stream.url;
     } else {
-      const drm = pick.format.protocol === 'cbc-encrypted-hls';
+      const drm = pick.format.protocol === encrypted;
       hls = new Hls({
         xhrSetup: (xhr, url) => { if (new URL(url).pathname.endsWith('.m3u8')) xhr.setRequestHeader('X-SC-Application-Id', appId); },
-        ...(drm && {
+        // hls.js unwraps the PlayReady challenge and sends the licence back as is.
+        ...(drm && !isMac && {
+          emeEnabled: true,
+          drmSystems: { 'com.microsoft.playready': { licenseUrl: LICENSE.replace(/fairplay$/, 'playready') } },
+          licenseXhrSetup: (xhr, url) => {
+            const u = new URL(url);
+            u.searchParams.set('license_token', stream.licenseAuthToken);
+            xhr.open('POST', u.toString(), true);
+          },
+        }),
+        ...(drm && isMac && {
           emeEnabled: true,
           drmSystems: { 'com.apple.fps': { licenseUrl: LICENSE, serverCertificateUrl: LICENSE } },
           licenseXhrSetup: (xhr, url, keyContext, challenge) => {
@@ -1919,13 +1970,63 @@
   };
   $('backBtn').onclick = () => walk(-1);
   $('fwdBtn').onclick = () => walk(1);
+  // Mouse back/forward buttons walk our list too (the page has no history of its own).
+  window.addEventListener('mouseup', e => { if (e.button === 3 || e.button === 4) { e.preventDefault(); walk(e.button === 3 ? -1 : 1); } });
   $('refreshBtn').onclick = () => route();
 
   // Title bar: drag the window from empty space, double-click to zoom.
   $('titlebar').addEventListener('mousedown', e => {
-    if (e.button !== 0 || e.target.closest('.nav-button, .tab-group, .pocSearch')) return;
+    if (e.button !== 0 || e.target.closest('.nav-button, .tab-group, .pocSearch, .window-controls')) return;
     if (e.detail === 2) window.ipc?.postMessage('zoom'); else window.ipc?.postMessage('drag');
   });
+
+  // Windows: our own window buttons and resize edges; Rust drops the native
+  // frame only once told they exist. macOS keeps its traffic lights.
+  if (isWin) {
+    document.body.classList.add('platform-win');
+    $('minBtn').onclick = () => window.ipc?.postMessage('minimize');
+    $('maxBtn').onclick = () => window.ipc?.postMessage('zoom');
+    $('closeBtn').onclick = () => window.ipc?.postMessage('close');
+    for (const edge of document.querySelectorAll('.pocEdge')) edge.addEventListener('mousedown', e => {
+      if (e.button === 0) { e.preventDefault(); window.ipc?.postMessage('resize:' + edge.dataset.edge); }
+    });
+    window.__windowState = ({ maximized }) => {
+      document.body.classList.toggle('maximized', maximized);
+      $('maxBtn').textContent = maximized ? '' : '';
+      $('maxBtn').title = maximized ? 'Restore' : 'Maximize';
+    };
+    window.ipc?.postMessage('frameless');
+  }
+
+  // The tab doubles as the URL bar, as in the Electron app: click to edit the
+  // full address; Enter goes there (a soundcloud.com URL or path, or a search
+  // when it has spaces: Electron's resolveUrlInput), Escape cancels.
+  const resolveUrlInput = input => {
+    const text = input.trim();
+    if (!text) return null;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
+      try {
+        const u = new URL(text);
+        return u.protocol === 'https:' && /^(www\.)?soundcloud\.com$/.test(u.hostname) ? (u.pathname.slice(1) + u.search) || 'discover' : null;
+      } catch { return null; }
+    }
+    const path = text.replace(/^(www\.)?soundcloud\.com(\/|$)/i, '').replace(/^\/+/, '');
+    return /\s/.test(path) ? 'search?q=' + encodeURIComponent(path) : path || 'discover';
+  };
+  const tabEl = document.querySelector('.pocTitlebar .tab'), urlInput = $('tabUrl');
+  function editUrl() {
+    if (tabEl.classList.contains('editing')) return;
+    tabEl.classList.add('editing');
+    urlInput.value = 'https://soundcloud.com/' + pathNow();
+    urlInput.focus();
+    urlInput.select();
+  }
+  tabEl.addEventListener('click', editUrl);
+  urlInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { const path = resolveUrlInput(urlInput.value); if (path) go(path); }
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); urlInput.blur(); }
+  });
+  urlInput.addEventListener('blur', () => tabEl.classList.remove('editing'));
 
   // --- Settings: saved by the Rust side (settings.json).
   const settings = Object.assign({ navButtons: true, theme: 'dark', discord: true, adblock: true }, window.__settings || {});
@@ -1974,8 +2075,8 @@
 
   // SoundCloud's shortcuts (where we have the feature).
   document.addEventListener('keydown', e => {
-    if (e.metaKey && !e.shiftKey && !e.altKey) {
-      const cmd = { '[': () => $('backBtn').click(), ']': () => $('fwdBtn').click(), r: () => route(), ',': () => toggleSettings(), f: () => $('searchForm').q.focus() }[e.key];
+    if ((isMac ? e.metaKey : e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      const cmd = { '[': () => $('backBtn').click(), ']': () => $('fwdBtn').click(), r: () => route(), ',': () => toggleSettings(), f: () => $('searchForm').q.focus(), l: () => editUrl() }[e.key];
       if (cmd) { e.preventDefault(); cmd(); }
       return;
     }

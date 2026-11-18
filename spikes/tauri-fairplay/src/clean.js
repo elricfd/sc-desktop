@@ -1,7 +1,11 @@
 // Hide SoundCloud's promotions, "events near you", artist upsells and footer
 // clutter, and reject optional cookies. Ported from the Electron app's
-// applyThemeToContent (src/main.ts). Runs in every frame at document start.
+// applyThemeToContent (src/main.ts). Runs in every frame at document start,
+// and from custom.html's prepFrame for embedded pages: WebView2 skips init
+// scripts when an iframe keeps its initial about:blank window. Once per document.
 (() => {
+  if (document.__scClean) return;
+  document.__scClean = true;
   const css = `
     .banner.m-promotion, .sidebarModule.mobileApps, .velvetCakeModule { display: none !important; }
     .l-footer { font-size: 0 !important; line-height: 0 !important; }
@@ -10,13 +14,16 @@
     .header__upsellWrapper, .creatorSubscriptionsButton.header__creatorUpsell, .artistConnectItem.m-upsellNextPro,
     .dropdownMenu [href*="checkout.soundcloud.com"], .dropdownMenu *:has(> svg.profileMenu__icon path[fill="#F50"]),
     .spotlight:has(.spotlight__upsellBanner), .spotlight__upsellBanner, .spotlight__upsellCTA,
-    .sidebarContent:has(.velvetCakeIframe),
+    .sidebarContent:has(.velvetCakeIframe), .quotaMeter__upsellText,
     .artistConnectContainer .tileGallery__sliderPeekForward, .artistConnectContainer .tileGallery__sliderPeekBackward,
     .MuiBox-root:has(a[href*="getstarted/fan-support"]) { display: none !important; }
   `;
   const style = document.createElement('style');
   style.textContent = css;
-  document.documentElement.appendChild(style);
+  // WebView2 runs this before <html> exists; WebKit after.
+  const add = () => document.documentElement.appendChild(style);
+  if (document.documentElement) add();
+  else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); add(); } }).observe(document, { childList: true });
 
   // A sidebar module (same-origin iframe) that is nothing but a paywall goes
   // entirely: hide its container in the parent page.
@@ -24,7 +31,7 @@
   try { container = window.frameElement?.closest('.webiEmbeddedModuleContainer'); } catch {}
   if (container) {
     const check = () => { container.style.display = document.querySelector('svg[aria-label="Paywalled feature"]') ? 'none' : ''; };
-    new MutationObserver(check).observe(document.documentElement, { childList: true, subtree: true });
+    new MutationObserver(check).observe(document, { childList: true, subtree: true });
   }
 
   // Opt out of every optional OneTrust cookie category (on by default).
