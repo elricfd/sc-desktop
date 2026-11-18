@@ -30,6 +30,11 @@
        and Support/Subscription/Settings/Sign out move into it from the more menu (see below). */
     .profileMenu li:has(a[href*="checkout.soundcloud.com"], a[href*="artists.soundcloud.com"]),
     .moreMenu li:has(a[href^="https://help.soundcloud.com"]), .moreMenu ul:has(a[href="/logout"]) { display: none !important; }
+    /* No three-dots menu (its account items are under the avatar, which goes
+       far right); the avatar items still open it, invisibly, to click its links. */
+    .header__right > .header__navMenu:has(.header__moreButton) { display: none !important; }
+    .dropdownMenu:has(.moreMenu) { opacity: 0 !important; pointer-events: none !important; }
+    .header__userNavUsernameButton { order: 1; margin-left: 8px; }
     .pocAccount .headerMenu__link::before { content: ''; width: 24px; flex: none; } /* the icon column */
     /* Our bar has the search; Artist Studio is "Artist" (see below); no chevron by the avatar. */
     header.header .header__search, .header__userNavUsernameButtonIcon { display: none !important; }
