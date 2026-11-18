@@ -13,6 +13,8 @@
   body { margin: 0; }
   #app > .l-container.l-content { padding-top: 48px; padding-bottom: 60px; }
   svg.ic { width: 100%; height: 100%; fill: currentColor; display: block; }
+  /* Sized by SoundCloud's CSS once harvested; before that (a first launch) 100% of nothing is huge. */
+  #muteIcon { width: 16px; height: 16px; }
   .soundList__item .sound__waveform canvas { width: 100%; height: 60px; display: block; cursor: pointer; }
   .lazyLoadingList__sentinel { height: 1px; }
   .playbackTimeline__progressWrapper, .volume__sliderWrapper { touch-action: none; }
@@ -28,7 +30,8 @@
   .pocQueue__meta { min-width: 0; flex: 1; }
   .pocQueue__meta div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .queue__scrollable { overflow-y: auto !important; max-height: 420px; }
-  /* SoundCloud pins its sidebar with a computed top; sticky does the same. */
+  /* SoundCloud pins its sidebar with a computed top (pinSidebars below): it
+     scrolls with the page until its end shows, then stays. */
   .l-sidebar-right .streamSidebar, .l-sidebar-right .userSidebar { position: sticky; top: 90px; }
   .artistShortcutTile__button { cursor: pointer; }
   /* Their linked .sc-artwork radius loads after the injected .image__rounded here. */
@@ -42,6 +45,9 @@
   /* SoundCloud's own pages we don't rebuild (Upload, Settings, …), framed in our
      content area between our header and player bar. */
   .dropdownMenu .dropdownContent__list { max-height: calc(100vh - 220px); overflow-y: auto; }
+  /* A framed page scrolls inside its frame; ours scrolling behind it shows a second scrollbar. */
+  body:has(.pocEmbed) { overflow: hidden; }
+  .pocToast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 10000; padding: 8px 14px; border-radius: 6px; background: #333; color: #fff; font: 13px/1.4 -apple-system, 'Segoe UI', sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
   .pocEmbed { position: fixed; top: 80px; left: 0; width: 100%; height: calc(100vh - 80px - var(--poc-player, 48px)); border: 0; display: block; }
   /* SoundCloud pins its messages column under its own, shorter header and has no player bar under it. */
   .l-messages-left { top: 80px; bottom: var(--poc-player, 48px); }
@@ -1251,6 +1257,7 @@
     const st = w.document.createElement('style');
     st.textContent = 'header.header, .playControls, .l-footer, .l-product-banners { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; } .l-top { top: 0 !important; }'; // .l-top: pinned under their (hidden) 46px header
     w.document.documentElement.appendChild(st);
+    w.document.documentElement.style.colorScheme = themeName();
     const P = w.HTMLMediaElement.prototype, play = P.play;
     P.play = function () { frameMedia.add(this); audio.pause(); return play.apply(this, arguments); };
   }
@@ -2036,6 +2043,9 @@
     const dark = settings.theme === 'system' ? darkQuery.matches : settings.theme !== 'light';
     document.body.classList.toggle('theme-dark', dark);
     document.body.classList.toggle('theme-light', !dark);
+    // Native scrollbars (Windows) and form controls follow this, ours and in framed pages.
+    document.documentElement.style.colorScheme = themeName();
+    document.querySelectorAll('.pocEmbed').forEach(f => { try { f.contentDocument.documentElement.style.colorScheme = themeName(); } catch {} });
     toWebi({ kind: 'set-theme', theme: themeName() });
   }
   darkQuery.addEventListener('change', applySettings);
@@ -2102,6 +2112,22 @@
   });
 
   paintPlayState(); paintVolume();
+
+  // Download progress from the Rust side, shown over the player bar.
+  window.__downloadStatus = msg => {
+    const t = $('pocToast') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'pocToast', className: 'pocToast', role: 'status' }));
+    t.textContent = msg;
+    clearTimeout(t.hideTimer);
+    t.hideTimer = setTimeout(() => t.remove(), /…$/.test(msg) ? 60000 : 5000);
+  };
+
+  // A sidebar taller than the window would never show its end with a fixed
+  // top, so the top is the room left (negative when it doesn't fit).
+  const pinSidebars = () => document.querySelectorAll('.l-sidebar-right .streamSidebar, .l-sidebar-right .userSidebar').forEach(el => {
+    el.style.top = Math.min(90, innerHeight - $('playControls').offsetHeight - el.offsetHeight - 16) + 'px';
+  });
+  addEventListener('scroll', pinSidebars, { passive: true });
+  addEventListener('resize', pinSidebars);
 
   // For stdin-driven tests.
   window.__poc = { api, play, seekTo, go, render, audio, toggleLike, toggleFollow, toggleQueue, toggleSettings, settings, cleanLink, copyLink, addNext, LINK_CHECKS, get order() { return order; }, get pos() { return pos; }, get playingCtx() { return playingCtx; }, get upNext() { return upNext; }, get queue() { return queue; }, get current() { return current(); } };

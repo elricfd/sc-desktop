@@ -104,6 +104,7 @@ fn main() -> wry::Result<()> {
     #[cfg(target_os = "macos")]
     let _menu = app_menu();
     let page_proxy = proxy.clone();
+    let dl_proxy = proxy.clone();
     let page_discord = discord.clone();
     let page_scrobbling = scrobbling.clone();
 
@@ -124,6 +125,20 @@ fn main() -> wry::Result<()> {
     let mut builder = builder
         .with_initialization_script_for_main_only(include_str!("clean.js"), false)
         .with_initialization_script(include_str!("nowplaying.js"))
+        // SoundCloud's track page downloads by sending its frame to the file on
+        // their CDN and relying on the attachment header. WebKit plays audio it
+        // can show instead, so take those navigations and save the file.
+        .with_navigation_handler(move |url| {
+            let host = url.strip_prefix("https://").and_then(|r| r.split(['/', '?', '#']).next()).unwrap_or("");
+            if !host.ends_with(".sndcdn.com") {
+                return true;
+            }
+            let proxy = dl_proxy.clone();
+            download(url, move |msg| {
+                let _ = proxy.send_event(Ev::Js(format!("window.__downloadStatus && window.__downloadStatus({})", serde_json::Value::from(msg))));
+            });
+            false
+        })
         .with_ipc_handler(move |req| {
             use std::sync::atomic::Ordering;
             let body = req.body();
@@ -428,6 +443,90 @@ fn snapshot(webview: &wry::WebView, path: String) {
         }
     });
     unsafe { webview.webview().takeSnapshotWithConfiguration_completionHandler(None, &done) };
+}
+
+/// Saves `url` to the Downloads folder under the server's file name, telling
+/// the page when it starts and how it ended.
+fn download(url: String, notify: impl Fn(String) + Send + 'static) {
+    std::thread::spawn(move || {
+        notify("Downloading…".into());
+        let result = (|| -> Result<String, String> {
+            let res = ureq::get(&url).call().map_err(|e| e.to_string())?;
+            let header = res.headers().get("content-disposition").and_then(|v| v.to_str().ok()).unwrap_or("");
+            let fallback = url.split(['?', '#']).next().unwrap_or("").rsplit('/').next().unwrap_or("");
+            let name = safe_file_name(&disposition_name(header).unwrap_or_else(|| fallback.to_string()));
+            let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default();
+            let dir = std::path::Path::new(&home).join("Downloads");
+            let (stem, ext) = match name.rfind('.') {
+                Some(i) if i > 0 => (&name[..i], &name[i..]),
+                _ => (name.as_str(), ""),
+            };
+            let path = (0..)
+                .map(|n| dir.join(if n == 0 { name.clone() } else { format!("{stem} ({n}){ext}") }))
+                .find(|p| !p.exists())
+                .unwrap();
+            // Written beside it first, so a failed download leaves no half file.
+            let part = path.with_extension("part");
+            let mut file = std::fs::File::create(&part).map_err(|e| e.to_string())?;
+            let copied = std::io::copy(&mut res.into_body().into_reader(), &mut file);
+            if let Err(e) = copied {
+                let _ = std::fs::remove_file(&part);
+                return Err(e.to_string());
+            }
+            std::fs::rename(&part, &path).map_err(|e| e.to_string())?;
+            Ok(path.file_name().unwrap_or_default().to_string_lossy().into_owned())
+        })();
+        notify(match result {
+            Ok(name) => format!("Downloaded {name}"),
+            Err(e) => format!("Download failed: {e}"),
+        });
+    });
+}
+
+/// `filename*=UTF-8''…` (percent-encoded) or `filename="…"` from a
+/// Content-Disposition header.
+fn disposition_name(header: &str) -> Option<String> {
+    for part in header.split(';').map(str::trim) {
+        if let Some(v) = part.strip_prefix("filename*=") {
+            let v = v.splitn(3, '\'').nth(2).unwrap_or(v);
+            let mut bytes = Vec::new();
+            let mut it = v.bytes();
+            while let Some(b) = it.next() {
+                let hex = |b: Option<u8>| b.and_then(|b| (b as char).to_digit(16));
+                if b == b'%' {
+                    match (hex(it.next()), hex(it.next())) {
+                        (Some(h), Some(l)) => bytes.push((h * 16 + l) as u8),
+                        _ => return None,
+                    }
+                } else {
+                    bytes.push(b);
+                }
+            }
+            return String::from_utf8(bytes).ok().filter(|s| !s.is_empty());
+        }
+    }
+    header.split(';').map(str::trim).find_map(|p| p.strip_prefix("filename=")).map(|v| v.trim_matches('"').to_string()).filter(|s| !s.is_empty())
+}
+
+/// A name that can't leave the Downloads folder or be hidden.
+fn safe_file_name(name: &str) -> String {
+    let clean: String = name.chars().map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '_' } else { c }).collect();
+    let clean = clean.trim().trim_start_matches('.').to_string();
+    if clean.is_empty() { "download".into() } else { clean }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn download_names() {
+        assert_eq!(disposition_name(r#"attachment; filename="Song - Mix.mp3""#).as_deref(), Some("Song - Mix.mp3"));
+        assert_eq!(disposition_name("attachment; filename*=UTF-8''%E5%A7%8B%E7%A5%96%20(Sah).wav; filename=\"x.wav\"").as_deref(), Some("始祖 (Sah).wav"));
+        assert_eq!(disposition_name("inline"), None);
+        assert_eq!(safe_file_name("../../etc/passwd"), "_.._etc_passwd");
+        assert_eq!(safe_file_name("a/b:c.mp3"), "a_b_c.mp3");
+        assert_eq!(safe_file_name(".."), "download");
+    }
 }
 
 #[cfg(target_os = "macos")]
