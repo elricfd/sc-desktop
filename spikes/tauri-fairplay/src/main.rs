@@ -9,6 +9,7 @@
 // override it). UI=custom swaps SoundCloud's site for our own page
 // (custom.html), which talks to SoundCloud's API and plays streams itself.
 // Each stdin line is JavaScript run in the page, so tests can drive it.
+mod accounts;
 mod adblock;
 mod lastfm;
 mod presence;
@@ -72,6 +73,9 @@ fn main() -> wry::Result<()> {
         Frameless,
         Resize(tao::window::ResizeDirection),
         Tray(tray::Action),
+        // account switcher: start again on another account, drop an old one's store
+        Relaunch,
+        RemoveStore(String),
     }
     let event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     let proxy = event_loop.create_proxy();
@@ -135,10 +139,19 @@ fn main() -> wry::Result<()> {
     // fixes.js works around WebKit bugs only.
     #[cfg(target_os = "macos")]
     let builder = WebViewBuilder::new().with_user_agent(safari_ua()).with_initialization_script(include_str!("fixes.js"));
+    // an extra account signs in inside its own data store (macOS 14+)
+    #[cfg(target_os = "macos")]
+    let builder = match accounts::store_id(&accounts::current(&data_dir())) {
+        Some(id) => wry::WebViewBuilderExtDarwin::with_data_store_identifier(builder, id),
+        None => builder,
+    };
     // WebView2's profile (cookies, the Widevine CDM) goes beside our settings
     // instead of next to the exe.
     #[cfg(target_os = "windows")]
-    let mut context = wry::WebContext::new(Some(data_dir().join("webview")));
+    let mut context = wry::WebContext::new(Some(data_dir().join(match accounts::current(&data_dir()).as_str() {
+        "default" => "webview".to_string(),
+        id => format!("webview-{id}"),
+    })));
     // Overlay scrollbars like macOS, instead of Windows' classic ones beside
     // every scrolling box (menus, queue, the page).
     #[cfg(target_os = "windows")]
@@ -207,6 +220,22 @@ fn main() -> wry::Result<()> {
                 if url.starts_with("https://") {
                     let _ = open_url(url);
                 }
+            } else if let Some(me) = body.strip_prefix("account:me:") {
+                if let Ok(me) = serde_json::from_str(me) {
+                    accounts::set_me(&data_dir(), &me);
+                }
+            } else if let Some(id) = body.strip_prefix("account:switch:") {
+                if id != accounts::current(&data_dir()) {
+                    accounts::switch(&data_dir(), id);
+                    let _ = page_proxy.send_event(Ev::Relaunch);
+                }
+            } else if body == "account:add" {
+                accounts::add(&data_dir());
+                let _ = page_proxy.send_event(Ev::Relaunch);
+            } else if let Some(id) = body.strip_prefix("account:remove:") {
+                if let Some(id) = accounts::remove(&data_dir(), id) {
+                    let _ = page_proxy.send_event(Ev::RemoveStore(id));
+                }
             } else if body == "chrome:ready" {
                 // chrome.js after a load: the settings saved since the launch
                 let _ = page_proxy.send_event(Ev::Js(format!("window.__chromeState && window.__chromeState({}, {})", load_settings(), lastfm::status())));
@@ -233,7 +262,7 @@ fn main() -> wry::Result<()> {
         .with_autoplay(true);
     if !custom {
         // our title bar and settings over soundcloud.com, with the saved settings
-        let state = format!("window.__settings = {settings}; window.__lastfm = {}; window.__appVersion = '{}';", lastfm::status(), env!("CARGO_PKG_VERSION"));
+        let state = format!("window.__settings = {settings}; window.__lastfm = {}; window.__appVersion = '{}'; window.__accounts = {};", lastfm::status(), env!("CARGO_PKG_VERSION"), accounts::load(&data_dir()));
         builder = builder.with_initialization_script_for_main_only(state, true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
     }
     if on("TRACE", false) {
@@ -281,6 +310,19 @@ fn main() -> wry::Result<()> {
                 let _ = webview.evaluate_script("window.__openSettings && window.__openSettings()");
             }
             Event::UserEvent(Ev::Tray(tray::Action::Quit)) => *flow = ControlFlow::Exit,
+            Event::UserEvent(Ev::Relaunch) => {
+                accounts::relaunch();
+                *flow = ControlFlow::Exit;
+            }
+            Event::UserEvent(Ev::RemoveStore(id)) => {
+                #[cfg(target_os = "macos")]
+                if let Some(uuid) = accounts::store_id(&id) {
+                    use wry::WebViewExtDarwin;
+                    wry::WebView::remove_data_store(&uuid, |r| if let Err(e) = r { eprintln!("accounts: store not removed: {e}") });
+                }
+                #[cfg(target_os = "windows")]
+                let _ = std::fs::remove_dir_all(data_dir().join(format!("webview-{id}")));
+            }
             // a click on the Dock icon while the window is hidden
             Event::Reopen { .. } => show(&window),
             Event::LoopDestroyed => updater::install(&update_ready),

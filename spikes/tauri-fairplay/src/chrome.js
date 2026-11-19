@@ -37,6 +37,14 @@
     .header__right > .header__navMenu:has(.header__moreButton) { display: none !important; }
     .dropdownMenu:has(.moreMenu) { opacity: 0 !important; pointer-events: none !important; }
     .header__userNavUsernameButton { order: 1; margin-left: 8px; }
+    .pocAccountRow { display: flex !important; align-items: center; gap: 8px; }
+    .pocAccountAvatar { flex: none; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: rgba(128, 128, 128, .3); }
+    .pocAccountPlus { display: flex; align-items: center; justify-content: center; background: none !important; font-size: 18px; line-height: 1; }
+    .pocAccountName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pocAccountCheck { flex: none; opacity: .7; }
+    .pocAccountRemove { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 15px; line-height: 1; opacity: .5; cursor: pointer; }
+    .pocAccountRemove:hover { opacity: 1; background: rgba(128, 128, 128, .2); }
+    .pocAccountRemove.confirm { width: auto; padding: 0 6px; font-size: 12px; opacity: 1; color: #f50; }
     .pocAccount .headerMenu__link::before { content: ''; width: 24px; flex: none; } /* the icon column */
     /* Our bar has the search; Artist Studio is "Artist" (see below); no chevron by the avatar. */
     header.header .header__search, .header__userNavUsernameButtonIcon { display: none !important; }
@@ -129,6 +137,9 @@
     .pocSettings nav button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
     .pocSettings main { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 20px; }
     .pocSettings h2 { padding: 14px 0 6px; color: var(--text-secondary); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+    .pocSettings .pocAccountsList { margin: 0; padding: 0; list-style: none; }
+    .pocSettings .pocAccountsItem { min-height: 36px; padding: 6px 8px; margin: 0 -8px; border-radius: 6px; color: inherit; text-decoration: none; cursor: pointer; }
+    .pocSettings .pocAccountsItem:hover { background: var(--bg-hover); }
     .pocSettings .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; min-height: 36px; padding: 6px 0; }
     .pocSettings .row > span:first-child { flex: 1 1 10em; }
     .pocSettings label.row { cursor: pointer; }
@@ -185,7 +196,10 @@
         <button data-tab="advanced">Advanced</button>
       </nav>
       <main>
-        <section data-tab="general"><h2>Window</h2>
+        <section data-tab="general"><h2>Accounts</h2>
+          <ul class="pocAccountsList"></ul>
+          <p class="hint">Each account signs in separately; switching restarts the app.</p>
+          <h2>Window</h2>
           <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label>
           <label class="row"><span>Minimize to tray</span><span class="toggle"><input type="checkbox" data-setting="minimizeToTray"><span class="slider"></span></span></label>
           <p class="hint">Closing the window keeps SoundCloud playing in the tray.</p></section>
@@ -554,9 +568,48 @@
       };
       go();
     };
+    // --- Accounts (accounts.rs): each extra one has its own sign-in, and
+    // switching restarts the app on it. Listed in the avatar menu and in
+    // Settings (a new account starts signed out, without an avatar menu).
+    const accounts = window.__accounts || { accounts: [{ id: 'default', name: '', avatar: '' }], current: 'default' };
+    const me = window.__sc_hydration?.find(x => x.hydratable === 'meUser')?.data;
+    if (me) {
+      const mine = { name: me.username, avatar: me.avatar_url || '' };
+      Object.assign(accounts.accounts.find(a => a.id === accounts.current) || {}, mine);
+      post('account:me:' + JSON.stringify(mine));
+    }
+    const accountRows = (list, rowClass) => {
+      for (const acc of accounts.accounts) {
+        const current = acc.id === accounts.current;
+        const row = list.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: rowClass + ' pocAccountRow', href: '#' }));
+        row.append(Object.assign(document.createElement(acc.avatar ? 'img' : 'span'), { className: 'pocAccountAvatar', src: acc.avatar || '' }),
+          Object.assign(document.createElement('span'), { className: 'pocAccountName', textContent: acc.name || 'Signed out' }));
+        if (current) row.append(Object.assign(document.createElement('span'), { className: 'pocAccountCheck', textContent: '✓', title: 'Current account' }));
+        else if (acc.id !== 'default') {
+          const x = row.appendChild(Object.assign(document.createElement('button'), { className: 'pocAccountRemove', textContent: '×', title: 'Remove this account and its sign-in from the app' }));
+          x.addEventListener('click', e => {
+            e.preventDefault(); e.stopPropagation();
+            // (WKWebView has no confirm() dialog: a second click confirms)
+            if (!x.classList.contains('confirm')) {
+              x.classList.add('confirm'); x.textContent = 'Remove?';
+              return setTimeout(() => { x.classList.remove('confirm'); x.textContent = '×'; }, 3000);
+            }
+            post('account:remove:' + acc.id);
+            accounts.accounts = accounts.accounts.filter(a => a !== acc);
+            row.parentElement.remove();
+          });
+        }
+        row.addEventListener('click', e => { e.preventDefault(); if (!current) post('account:switch:' + acc.id); });
+      }
+      const add = list.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: rowClass + ' pocAccountRow', href: '#' }));
+      add.append(Object.assign(document.createElement('span'), { className: 'pocAccountAvatar pocAccountPlus', textContent: '+' }), Object.assign(document.createElement('span'), { className: 'pocAccountName', textContent: 'Add account' }));
+      add.addEventListener('click', e => { e.preventDefault(); post('account:add'); });
+    };
+    accountRows(panel.querySelector('.pocAccountsList'), 'pocAccountsItem');
     const mergeMenus = () => {
       const menu = document.querySelector('.headerMenu.profileMenu');
       if (!menu || menu.querySelector('.pocAccount')) return;
+      accountRows(menu.appendChild(Object.assign(document.createElement('ul'), { className: 'headerMenu__list sc-list-nostyle pocAccounts' })), 'headerMenu__link');
       const ul = menu.appendChild(Object.assign(document.createElement('ul'), { className: 'headerMenu__list sc-list-nostyle pocAccount' }));
       for (const [label, sel] of accountItems) {
         const a = ul.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: 'headerMenu__link', href: '#', textContent: label }));
