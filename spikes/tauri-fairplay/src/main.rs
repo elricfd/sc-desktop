@@ -11,6 +11,7 @@
 // Each stdin line is JavaScript run in the page, so tests can drive it.
 mod accounts;
 mod adblock;
+mod downloads;
 mod lastfm;
 mod presence;
 mod tray;
@@ -131,6 +132,11 @@ fn main() -> wry::Result<()> {
     let mut _tray = None; // kept alive for the app's lifetime
     #[cfg(target_os = "macos")]
     let _menu = app_menu();
+    let list_proxy = proxy.clone();
+    let dls = downloads::Downloads::new(move |list| {
+        let _ = list_proxy.send_event(Ev::Js(format!("window.__downloads && window.__downloads({list})")));
+    });
+    let page_dls = dls.clone();
     let page_proxy = proxy.clone();
     let dl_proxy = proxy.clone();
     let page_discord = discord.clone();
@@ -219,6 +225,28 @@ fn main() -> wry::Result<()> {
                 // links meant for the browser (the page itself never navigates away)
                 if url.starts_with("https://") {
                     let _ = open_url(url);
+                }
+            } else if let Some(req) = body.strip_prefix("download:") {
+                // the download buttons chrome.js puts under tracks, albums and playlists
+                if let Ok(req) = serde_json::from_str(req) {
+                    page_dls.start(&req);
+                }
+            } else if let Some(cmd) = body.strip_prefix("downloads:") {
+                let mut parts = cmd.split(':');
+                let (what, id, track) = (parts.next().unwrap_or(""), parts.next().and_then(|n| n.parse().ok()), parts.next().and_then(|n| n.parse().ok()));
+                match (what, id) {
+                    ("cancel", Some(id)) => page_dls.cancel(id),
+                    ("show", Some(id)) => {
+                        if let Some(file) = page_dls.file(id, track) {
+                            downloads::reveal(&file, true);
+                        }
+                    }
+                    ("open-folder", _) => downloads::reveal(&downloads::folder(), false),
+                    ("clear", _) => page_dls.clear(),
+                    ("get", _) => {
+                        let _ = page_proxy.send_event(Ev::Js(format!("window.__downloads && window.__downloads({})", page_dls.list())));
+                    }
+                    _ => {}
                 }
             } else if let Some(me) = body.strip_prefix("account:me:") {
                 if let Ok(me) = serde_json::from_str(me) {
@@ -325,7 +353,10 @@ fn main() -> wry::Result<()> {
             }
             // a click on the Dock icon while the window is hidden
             Event::Reopen { .. } => show(&window),
-            Event::LoopDestroyed => updater::install(&update_ready),
+            Event::LoopDestroyed => {
+                dls.cancel_all();
+                updater::install(&update_ready);
+            }
             Event::UserEvent(Ev::Js(js)) => {
                 let _ = webview.evaluate_script(&js);
             }
