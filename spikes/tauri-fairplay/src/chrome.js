@@ -206,7 +206,10 @@
           <p class="hint" data-lfm="status"></p></section>
         <section data-tab="advanced" hidden><h2>Privacy</h2>
           <label class="row"><span>Block ads and trackers</span><span class="toggle"><input type="checkbox" data-setting="adblock"><span class="slider"></span></span></label>
-          <p class="hint">Takes effect the next time the app starts.</p></section>
+          <p class="hint">Takes effect the next time the app starts.</p>
+          <h2>Updates</h2>
+          <label class="row"><span>Automatic updates</span><span class="toggle"><input type="checkbox" data-setting="autoUpdate"><span class="slider"></span></span></label>
+          <p class="hint">Downloads new versions in the background and installs them when you quit. <span class="pocVersion"></span></p></section>
       </main>
     </aside>`;
 
@@ -451,7 +454,8 @@
     for (const el of [bar, panel]) for (const t of ['keydown', 'keypress', 'keyup']) el.addEventListener(t, e => e.stopPropagation());
 
     // --- Settings: saved by the Rust side (settings.json).
-    const settings = { navButtons: true, minimizeToTray: true, theme: 'dark', discord: true, adblock: true };
+    const settings = { navButtons: true, minimizeToTray: true, autoUpdate: true, theme: 'dark', discord: true, adblock: true };
+    if (window.__appVersion) panel.querySelector('.pocVersion').textContent = `This is version ${window.__appVersion}.`;
     const darkQuery = matchMedia('(prefers-color-scheme: dark)');
     function applySettings() {
       $('.navigation-controls').classList.toggle('hidden', !settings.navButtons);

@@ -13,6 +13,7 @@ mod adblock;
 mod lastfm;
 mod presence;
 mod tray;
+mod updater;
 
 use tao::{
     event::{Event, WindowEvent},
@@ -80,6 +81,7 @@ fn main() -> wry::Result<()> {
             // `WINDOW x y w h` places the window (logical points), for side-by-side tests.
             let place: Option<Vec<f64>> = line.strip_prefix("WINDOW ").map(|r| r.split_whitespace().filter_map(|n| n.parse().ok()).collect());
             let ev = match (line.strip_prefix("SNAP "), place) {
+                _ if line == "QUIT" => Ev::Tray(tray::Action::Quit), // quit as the tray's Quit does
                 (Some(path), _) => Ev::Snap(path.to_string()),
                 (_, Some(v)) if v.len() == 4 => Ev::Place(v[0], v[1], v[2], v[3]),
                 _ => Ev::Js(line),
@@ -113,6 +115,14 @@ fn main() -> wry::Result<()> {
         window = window.with_window_icon(tao::window::Icon::from_rgba(rgba, w, h).ok());
     }
     let window = window.build(&event_loop).unwrap();
+    let update_ready = updater::Ready::default();
+    if setting("autoUpdate") && std::env::var("UPDATES").as_deref() != Ok("0") {
+        let p = proxy.clone();
+        updater::start(data_dir(), update_ready.clone(), move |msg| {
+            eprintln!("updater: {msg}");
+            let _ = p.send_event(Ev::Js(format!("window.__downloadStatus && window.__downloadStatus({})", serde_json::Value::from(msg))));
+        });
+    }
     let tray_proxy = proxy.clone();
     let mut _tray = None; // kept alive for the app's lifetime
     #[cfg(target_os = "macos")]
@@ -223,7 +233,7 @@ fn main() -> wry::Result<()> {
         .with_autoplay(true);
     if !custom {
         // our title bar and settings over soundcloud.com, with the saved settings
-        let state = format!("window.__settings = {settings}; window.__lastfm = {};", lastfm::status());
+        let state = format!("window.__settings = {settings}; window.__lastfm = {}; window.__appVersion = '{}';", lastfm::status(), env!("CARGO_PKG_VERSION"));
         builder = builder.with_initialization_script_for_main_only(state, true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
     }
     if on("TRACE", false) {
@@ -273,6 +283,7 @@ fn main() -> wry::Result<()> {
             Event::UserEvent(Ev::Tray(tray::Action::Quit)) => *flow = ControlFlow::Exit,
             // a click on the Dock icon while the window is hidden
             Event::Reopen { .. } => show(&window),
+            Event::LoopDestroyed => updater::install(&update_ready),
             Event::UserEvent(Ev::Js(js)) => {
                 let _ = webview.evaluate_script(&js);
             }
@@ -603,7 +614,7 @@ fn styles_path() -> std::path::PathBuf {
 
 // The settings panel's choices; anything missing falls back to the default.
 fn load_settings() -> serde_json::Value {
-    let mut s = serde_json::json!({ "navButtons": true, "minimizeToTray": true, "theme": "dark", "discord": true, "adblock": true, "lastfm": false });
+    let mut s = serde_json::json!({ "navButtons": true, "minimizeToTray": true, "autoUpdate": true, "theme": "dark", "discord": true, "adblock": true, "lastfm": false });
     if let Some(saved) = std::fs::read_to_string(data_dir().join("settings.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
