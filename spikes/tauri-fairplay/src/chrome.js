@@ -24,7 +24,9 @@
     .modal .modal__header.hovering { top: 32px !important; }
     .dropbar { top: 78px !important; }
     #gritter-notice-wrapper { top: 92px !important; }
-    .fullScreenOverlay, .webiIframe.webiIframeV2Layout.fullScreen { top: 32px !important; height: auto !important; bottom: 0 !important; }
+    .fullScreenOverlay { top: 32px !important; height: auto !important; bottom: 0 !important; }
+    /* (an iframe doesn't stretch between top and bottom: height auto is 150px) */
+    .webiIframe.webiIframeV2Layout.fullScreen { top: 32px !important; height: calc(100vh - 32px) !important; }
     .headerMenu.moreMenu, .headerMenu.profileMenu { max-height: calc(100vh - 78px) !important; }
     /* The avatar menu is the account menu: no Artist Pro/Benefits/Distribute,
        and Support/Subscription/Settings/Sign out move into it from the more menu (see below). */
@@ -184,7 +186,9 @@
       </nav>
       <main>
         <section data-tab="general"><h2>Window</h2>
-          <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label></section>
+          <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label>
+          <label class="row"><span>Minimize to tray</span><span class="toggle"><input type="checkbox" data-setting="minimizeToTray"><span class="slider"></span></span></label>
+          <p class="hint">Closing the window keeps SoundCloud playing in the tray.</p></section>
         <section data-tab="appearance" hidden><h2>Theme</h2>
           <div class="row"><span>Theme</span><select data-setting="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="system">Match system</option></select></div></section>
         <section data-tab="integrations" hidden><h2>Discord</h2>
@@ -208,6 +212,15 @@
 
   // SoundCloud's router follows pushState + popstate (the Electron app's
   // navigateActiveTab); a real load would stop whatever is playing.
+  // Upload's X asks for /artists whatever page you came from: go back there
+  // instead. (Registered before SoundCloud's own listener, so it wins.)
+  addEventListener('message', e => {
+    if (e.origin !== location.origin || e.data?.kind !== 'navigate' || e.data.href !== '/artists' || location.pathname !== '/upload') return;
+    if (window.navigation && !navigation.canGoBack) return;
+    e.stopImmediatePropagation();
+    history.back();
+  }, true);
+
   const go = url => {
     const u = new URL(url, location.href);
     if (u.origin !== location.origin || !document.getElementById('app')) return location.assign(u.href);
@@ -438,7 +451,7 @@
     for (const el of [bar, panel]) for (const t of ['keydown', 'keypress', 'keyup']) el.addEventListener(t, e => e.stopPropagation());
 
     // --- Settings: saved by the Rust side (settings.json).
-    const settings = { navButtons: true, theme: 'dark', discord: true, adblock: true };
+    const settings = { navButtons: true, minimizeToTray: true, theme: 'dark', discord: true, adblock: true };
     const darkQuery = matchMedia('(prefers-color-scheme: dark)');
     function applySettings() {
       $('.navigation-controls').classList.toggle('hidden', !settings.navButtons);
@@ -464,6 +477,7 @@
       panel.querySelectorAll('section').forEach(sec => { sec.hidden = sec.dataset.tab !== b.dataset.tab; });
     };
     const toggleSettings = force => panel.classList.toggle('visible', force);
+    window.__openSettings = () => toggleSettings(true); // the tray's Settings
     $('.close-btn', panel).onclick = () => toggleSettings(false);
 
     // Last.fm: the Rust side signs in (browser approval) and scrobbles.

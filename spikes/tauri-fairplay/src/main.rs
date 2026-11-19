@@ -12,6 +12,7 @@
 mod adblock;
 mod lastfm;
 mod presence;
+mod tray;
 
 use tao::{
     event::{Event, WindowEvent},
@@ -69,6 +70,7 @@ fn main() -> wry::Result<()> {
         Close,
         Frameless,
         Resize(tao::window::ResizeDirection),
+        Tray(tray::Action),
     }
     let event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     let proxy = event_loop.create_proxy();
@@ -105,7 +107,14 @@ fn main() -> wry::Result<()> {
             .with_fullsize_content_view(true)
             .with_traffic_light_inset(tao::dpi::LogicalPosition::new(12.0, 10.0));
     }
+    #[cfg(target_os = "windows")]
+    {
+        let (rgba, w, h) = tray::rgba(include_bytes!("icons/app.png"));
+        window = window.with_window_icon(tao::window::Icon::from_rgba(rgba, w, h).ok());
+    }
     let window = window.build(&event_loop).unwrap();
+    let tray_proxy = proxy.clone();
+    let mut _tray = None; // kept alive for the app's lifetime
     #[cfg(target_os = "macos")]
     let _menu = app_menu();
     let page_proxy = proxy.clone();
@@ -230,9 +239,40 @@ fn main() -> wry::Result<()> {
         let _ = proxy.send_event(Ev::Load);
     }
 
+    // Closing hides the window when "Minimize to tray" is on (the default, as
+    // in the Electron app); the tray, the Dock or Quit bring it back or end it.
+    let close = |window: &tao::window::Window, flow: &mut ControlFlow| {
+        if load_settings()["minimizeToTray"].as_bool().unwrap_or(true) {
+            window.set_visible(false);
+        } else {
+            *flow = ControlFlow::Exit;
+        }
+    };
+    let show = |window: &tao::window::Window| {
+        window.set_visible(true);
+        window.set_minimized(false);
+        window.set_focus();
+    };
     event_loop.run(move |event, _, flow| {
         *flow = ControlFlow::Wait;
         match event {
+            // The tray (and the Dock icon) need the running app.
+            Event::NewEvents(tao::event::StartCause::Init) => {
+                let p = tray_proxy.clone();
+                _tray = Some(tray::build(move |a| {
+                    let _ = p.send_event(Ev::Tray(a));
+                }));
+                #[cfg(target_os = "macos")]
+                tray::set_dock_icon();
+            }
+            Event::UserEvent(Ev::Tray(tray::Action::Show)) => show(&window),
+            Event::UserEvent(Ev::Tray(tray::Action::Settings)) => {
+                show(&window);
+                let _ = webview.evaluate_script("window.__openSettings && window.__openSettings()");
+            }
+            Event::UserEvent(Ev::Tray(tray::Action::Quit)) => *flow = ControlFlow::Exit,
+            // a click on the Dock icon while the window is hidden
+            Event::Reopen { .. } => show(&window),
             Event::UserEvent(Ev::Js(js)) => {
                 let _ = webview.evaluate_script(&js);
             }
@@ -248,7 +288,7 @@ fn main() -> wry::Result<()> {
             }
             Event::UserEvent(Ev::Zoom) => window.set_maximized(!window.is_maximized()),
             Event::UserEvent(Ev::Minimize) => window.set_minimized(true),
-            Event::UserEvent(Ev::Close) => *flow = ControlFlow::Exit,
+            Event::UserEvent(Ev::Close) => close(&window, flow),
             Event::UserEvent(Ev::Resize(dir)) => {
                 let _ = window.drag_resize_window(dir);
             }
@@ -270,7 +310,7 @@ fn main() -> wry::Result<()> {
             Event::UserEvent(Ev::Load) => {
                 let _ = webview.load_url(&url);
             }
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *flow = ControlFlow::Exit,
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => close(&window, flow),
             _ => {}
         }
     });
@@ -563,7 +603,7 @@ fn styles_path() -> std::path::PathBuf {
 
 // The settings panel's choices; anything missing falls back to the default.
 fn load_settings() -> serde_json::Value {
-    let mut s = serde_json::json!({ "navButtons": true, "theme": "dark", "discord": true, "adblock": true, "lastfm": false });
+    let mut s = serde_json::json!({ "navButtons": true, "minimizeToTray": true, "theme": "dark", "discord": true, "adblock": true, "lastfm": false });
     if let Some(saved) = std::fs::read_to_string(data_dir().join("settings.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
