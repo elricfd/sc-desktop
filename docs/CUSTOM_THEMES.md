@@ -1,127 +1,52 @@
-# Custom Themes
+# Custom themes
 
-sc-desktop supports custom themes. You can customize the appearance of the SoundCloud UI by creating and loading CSS
-theme files.
+A theme is a CSS file that restyles SoundCloud's pages.
 
-## How to Use Custom Themes
+## Using one
 
-1. **Open the Settings Panel**: Click the menu button at the top right, or press `F1`
-2. **Navigate to Appearance**: The theme picker is in the "Appearance" section
-3. **Open Themes Folder**: Click the "Open Themes Folder" button to open your themes directory
-4. **Add Theme Files**: Place your `.css` theme files in the opened folder
-5. **Refresh Themes**: Click "Refresh Themes" in the settings to load new theme files
-6. **Select Theme**: Choose your desired theme from the dropdown menu
-7. **Apply Changes**: The theme will be applied immediately
+Open Settings (the menu button at the top right, or `F1`) and go to Appearance. "Open Themes Folder" opens the folder
+your themes go in; drop a `.css` file there, click "Refresh Themes", and pick it from the list. "No Theme" goes back to
+the default look.
 
-## Creating Custom Themes
+The folder is:
 
-Custom themes are standard CSS files that can modify the appearance of SoundCloud. Here are some tips for creating your
-own themes:
+- Windows: `%APPDATA%\sc-desktop\themes\`
+- macOS: `~/Library/Application Support/sc-desktop/themes/`
+- Linux: `~/.config/sc-desktop/themes/`
 
-### Basic Structure
+The themes in this repo's `themes/` folder (OLED and Gruvbox) come with the app. A file with the same name in your own
+folder replaces the bundled one.
+
+## Making one
+
+It's plain CSS. Start with a comment that names the theme, then override whatever you like. SoundCloud's own styles
+usually win unless you add `!important`.
 
 ```css
-/* Your Custom Theme Name */
-/* Description of what your theme does */
+/* Midnight: darker backgrounds and an orange header */
 
-/* Target SoundCloud elements */
 body {
-    background-color: #your-color !important;
+    background-color: #0b0b0b !important;
 }
 
 .header {
-    background: linear-gradient(135deg, #color1 0%, #color2 100%) !important;
+    background: #ff5500 !important;
 }
 ```
 
-### Important Notes
+Some selectors that are handy to start from:
 
-- Use `!important` declarations to ensure your styles override SoundCloud's default styles
-- SoundCloud's class names may change, so themes might need updates occasionally
-- Test your themes thoroughly to ensure they work across different pages
+- `body`: the page background
+- `.header`: the top bar
+- `.soundList__item`, `.trackItem`: tracks in lists
+- `.playButton`, `.sc-button-play`: play buttons
+- `.playbackTimeline`: the progress bar
+- `::-webkit-scrollbar`: scrollbars
 
-### Common Elements to Customize
+SoundCloud renames its classes now and then, so a theme can need touching up after one of their updates. If a theme
+doesn't show up, check the file ends in `.css` and the CSS is valid, then refresh the list.
 
-- `body` - Main background
-- `.header` - Top navigation bar
-- `.sidebar` - Left sidebar
-- `.soundList__item`, `.trackItem` - Track cards
-- `.playButton`, `.sc-button-play` - Play buttons
-- `.progressBar`, `.playbackTimeline` - Progress bars
-- `::-webkit-scrollbar` - Scrollbars
+## Sharing one
 
-## Theme Locations
-
-The themes in this repository's `themes/` folder (OLED, Gruvbox) ship with the app and are always in the dropdown. A
-file of the same name in your own folder takes the place of the bundled one.
-
-Your own themes are stored in your user data directory:
-
-- **Windows**: `%APPDATA%\sc-desktop\themes\`
-- **macOS**: `~/Library/Application Support/sc-desktop/themes/`
-- **Linux**: `~/.config/sc-desktop/themes/`
-
-## Troubleshooting
-
-### Theme Not Loading
-
-1. Ensure the file has a `.css` extension
-2. Check that the CSS syntax is valid
-3. Try refreshing themes in the settings
-4. Restart the application if necessary
-
-### Theme Not Working
-
-1. Verify you're using `!important` declarations
-2. Check browser developer tools for CSS conflicts
-3. SoundCloud may have updated their class names
-
-### Reverting to Default
-
-Select "No Theme" from the dropdown to remove all custom styling.
-
-## Advanced Features
-
-### CSS Variables
-
-Some themes may use CSS custom properties:
-
-```css
-:root {
-    --primary-color: #ff6b35;
-    --secondary-color: #ff4500;
-}
-```
-
-### Animations
-
-Add custom animations:
-
-```css
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-.my-element {
-    animation: fadeIn 0.3s ease-in;
-}
-```
-
-## Contributing Themes
-
-Feel free to share themes you've created — if you'd like your theme included in the project, open a pull request adding
-your `.css` file under the `themes/` folder (or send it in an issue/attachment). I'll review submissions and merge
-themes that are well-made and follow the guidelines above.
-
-Guidelines for contribution:
-
-- Include a short header comment at the top of your `.css` with the theme name and a one-line description.
-- Keep changes scoped to styling only (no scripts or binary files).
-- Prefer reasonably named CSS selectors and document any assumptions in the comment block.
-
-If your theme is accepted I'll add it to the repository so other users can enjoy it. Thanks for contributing!
+Open a pull request that adds your file to `themes/`, or attach it to an issue. Keep it to CSS (no scripts or images)
+and give it the name comment at the top.
