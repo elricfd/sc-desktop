@@ -32,12 +32,12 @@ codesign --force --sign "Apple Development: …" --identifier com.elricfd.fairpl
 
 ## Releases
 
-`./release.sh` builds and signs `SoundCloud.app` and its zip; `./release.sh --publish` also creates the GitHub release
-(tagged `rust-v<version>`, marked as a pre-release so the Electron app's updater ignores it). On Windows,
-`.\release.ps1` builds the exe's zip, `-Install` puts it in `%LOCALAPPDATA%\Programs\SoundCloud` with a Start menu
-shortcut, and `-Publish` adds the zip to the same release (whichever platform publishes first creates it). Bump
-`version` in `Cargo.toml` first. Installed copies check for those releases at launch and every 6 hours and update
-themselves when you quit; a build run from `target/` never updates.
+`./release.sh` builds and signs `SoundCloud Rust.app` (named apart from the Electron app) and its zip;
+`./release.sh --publish` also creates the GitHub release (tagged `rust-v<version>`, marked as a pre-release so the
+Electron app's updater ignores it). On Windows, `.\release.ps1` builds the exe's zip, `-Install` puts it in
+`%LOCALAPPDATA%\Programs\SoundCloud` with a Start menu shortcut, and `-Publish` adds the zip to the same release
+(whichever platform publishes first creates it). Bump `version` in `Cargo.toml` first. Installed copies check for those
+releases at launch and every 6 hours and update themselves when you quit; a build run from `target/` never updates.
 
 ## Layout
 

@@ -91,11 +91,13 @@ fn check(dir: &Path, target: &Path) -> Result<Option<(String, PathBuf)>, String>
     std::io::copy(&mut get(url)?.into_reader(), &mut file).map_err(|e| e.to_string())?;
     let out = work.join(version);
     unzip(&zip, &out)?;
-    let name = target.file_name().unwrap();
-    let new = out.join(name);
-    if !new.exists() {
-        return Err(format!("{} not in the update", name.to_string_lossy()));
-    }
+    // the app in the zip, whatever it's called (the installed copy may have been renamed)
+    let want = if cfg!(target_os = "macos") { "app" } else { "exe" };
+    let new = std::fs::read_dir(&out)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .find(|p| p.extension().is_some_and(|x| x == want))
+        .ok_or_else(|| format!("no .{want} in the update"))?;
     verify(target, &new)?;
     Ok(Some((version.to_string(), new)))
 }
