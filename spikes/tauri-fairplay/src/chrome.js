@@ -41,11 +41,10 @@
     .pocAccountAvatar { flex: none; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: rgba(128, 128, 128, .3); }
     .pocAccountPlus { display: flex; align-items: center; justify-content: center; background: none !important; font-size: 18px; line-height: 1; }
     .pocAccountName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pocAccountCheck { flex: none; opacity: .7; }
-    .pocAccountRemove { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 15px; line-height: 1; opacity: .5; cursor: pointer; }
+    .pocAccountCheck { flex: none; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; opacity: .7; }
+    .pocAccountRemove { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 15px; line-height: 1; opacity: .5; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .pocAccountRemove:hover { opacity: 1; background: rgba(128, 128, 128, .2); }
     .pocAccountRemove.confirm { width: auto; padding: 0 6px; font-size: 12px; opacity: 1; color: #f50; }
-    .pocAccount .headerMenu__link::before { content: ''; width: 24px; flex: none; } /* the icon column */
     /* Our bar has the search; Artist Studio is "Artist" (see below); no chevron by the avatar. */
     header.header .header__search, .header__userNavUsernameButtonIcon { display: none !important; }
     /* SoundCloud's header is at least 960 px wide; in a narrower window the
@@ -63,6 +62,12 @@
        a transparent macOS title bar; the traffic lights sit in the 80px on the left. ---- */
     .pocTitlebar { --poc-bg: #121212; --poc-text: #fff; --poc-hover: rgba(255, 255, 255, .1);
       position: fixed; top: 0; left: 0; right: 0; z-index: 2147483000; display: grid; grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr); align-items: center; height: 32px; background: var(--poc-bg); color: var(--poc-text); user-select: none; -webkit-user-select: none; font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    html.poc-oled .pocTitlebar { --poc-bg: #000; }
+    /* The page's scrollbar would run behind our bar and the player: ours runs between them. */
+    html { scrollbar-width: none; }
+    .pocScroll { display: none; position: fixed; right: 2px; z-index: 2147482999; width: 8px; border-radius: 4px; background: rgba(255, 255, 255, .3); opacity: 0; transition: opacity .3s; }
+    html.theme-light .pocScroll { background: rgba(0, 0, 0, .3); }
+    .pocScroll.on, .pocScroll:hover, .pocScroll.drag { opacity: 1; transition: none; }
     html.theme-light .pocTitlebar { --poc-bg: #fff; --poc-text: #333; --poc-hover: rgba(0, 0, 0, .08); border-bottom: 1px solid rgba(0, 0, 0, .08); }
     .pocTitlebar * { box-sizing: border-box; }
     .pocTitlebar .header-side, .pocTitlebar .header-center { display: flex; align-items: center; min-width: 0; height: 100%; }
@@ -74,12 +79,21 @@
     .pocTitlebar .nav-button:hover { opacity: 1; background: var(--poc-hover); }
     .pocTitlebar .nav-button.disabled { opacity: .3; background: transparent; }
     .pocTitlebar .title-bar { align-self: stretch; flex: 1 1 16px; min-width: 16px; }
-    .pocTitlebar .tab-group { min-width: 0; max-width: 100%; display: flex; align-items: center; height: 22px; padding: 2px; border-radius: 8px; background: var(--poc-hover); }
-    .pocTitlebar .tab { display: flex; align-items: center; gap: 6px; width: 320px; max-width: 100%; min-width: 0; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--poc-hover); overflow: hidden; cursor: text; }
+    .pocTitlebar .tab-group { min-width: 0; max-width: 100%; display: flex; align-items: center; gap: 2px; height: 22px; padding: 2px; border-radius: 8px; background: var(--poc-hover); }
+    .pocTitlebar .tab { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; width: 150px; min-width: 28px; height: 22px; padding: 0 6px; border-radius: 6px; overflow: hidden; opacity: .7; cursor: default; transition: background-color .15s, opacity .15s; }
+    .pocTitlebar .tab:hover { opacity: 1; background: var(--poc-hover); }
+    .pocTitlebar .tab.active { flex: 0 1 auto; width: 320px; max-width: 100%; min-width: 150px; opacity: 1; background: var(--poc-hover); cursor: text; }
+    .pocTitlebar .tab-close { display: none; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: default; }
+    .pocTitlebar .tab-close:hover { background: var(--poc-hover); }
+    .pocTitlebar .tab:hover .tab-close, .pocTitlebar .tab.active .tab-close { display: flex; }
+    .pocTitlebar .tab-group.single .tab-close { display: none; } /* the last tab is the window */
+    .pocTitlebar .tab.editing .tab-close { display: none; }
+    .pocTitlebar .pocNewTab { flex: none; margin: 0 0 0 4px; width: 24px; }
     .pocTitlebar .tab-icon { flex: none; width: 16px; height: 16px; border-radius: 3px; }
     .pocTitlebar .tab-icon:not([src]) { visibility: hidden; }
     .pocTitlebar .tab-title, .pocTitlebar .tab-path { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
-    .pocTitlebar .tab-title { flex: 0 1 auto; }
+    .pocTitlebar .tab-title { flex: 1 1 auto; }
+    .pocTitlebar .tab.active .tab-title { flex: 0 1 auto; }
     .pocTitlebar .tab-path { flex: 1 1 0; opacity: .5; }
     /* The tab doubles as the URL bar (Electron header.js editUrl). */
     .pocTitlebar .tab-url { display: none; flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
@@ -90,6 +104,7 @@
     .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
     .pocTitlebar .pocSearch { position: relative; }
     .pocSuggest { display: none; position: absolute; top: 28px; right: 0; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 4px 0; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: #1a1a1a; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); font: 13px Söhne, system-ui, -apple-system, 'Segoe UI', sans-serif; /* SoundCloud's own font */ cursor: default; }
+    html.poc-oled .pocSuggest { background: #000; }
     html.theme-light .pocSuggest { border-color: rgba(0, 0, 0, .12); background: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
     .pocSuggest.open { display: block; }
     .pocSuggestHead { padding: 10px 12px 4px; font-weight: 600; line-height: 1.2; opacity: .65; }
@@ -99,8 +114,10 @@
     .pocSuggestRow img.round { border-radius: 50%; }
     .pocSuggestIcon { flex: none; width: 32px; height: 16px; background: currentColor; opacity: .5; -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" stroke="black" stroke-width="1.5" fill="none"/><path d="M10.5 10.5 14 14" stroke="black" stroke-width="1.5" stroke-linecap="round"/></svg>') center / 16px no-repeat; }
     .pocTitlebar .pocDlBtn { position: relative; }
+    .pocTitlebar .pocDlBtn[hidden] { display: none; }
     .pocDlBadge { position: absolute; top: 0; right: 2px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px; background: #f50; color: #fff; font: 600 9px/13px -apple-system, sans-serif; text-align: center; }
     .pocDownloads { --dl-bg: #1a1a1a; --dl-line: rgba(255, 255, 255, .1); --dl-hover: rgba(255, 255, 255, .08); position: fixed; top: 36px; right: 8px; z-index: 2147483001; width: min(400px, calc(100vw - 16px)); max-height: min(480px, calc(100vh - 48px)); display: flex; flex-direction: column; border: 1px solid var(--dl-line); border-radius: 10px; background: var(--dl-bg); color: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); font: 13px/1.35 Söhne, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    html.poc-oled .pocDownloads { --dl-bg: #000; }
     html.theme-light .pocDownloads { --dl-bg: #fff; --dl-line: rgba(0, 0, 0, .12); --dl-hover: rgba(0, 0, 0, .05); color: #222; box-shadow: 0 10px 30px rgba(0, 0, 0, .15); }
     .pocDownloads[hidden] { display: none; }
     .pocDownloads header { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 8px 14px; border-bottom: 1px solid var(--dl-line); font-size: 14px; }
@@ -111,7 +128,9 @@
     .pocDlList:not(:empty) + .pocDlEmpty { display: none; }
     .pocDlRow { padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--dl-line); }
     .pocDlHead { display: flex; align-items: center; gap: 6px; }
-    .pocDlHead .pocDlArrow { flex: none; width: 20px; height: 20px; margin: 0 0 0 -4px; padding: 0; border: 0; font-size: 10px; }
+    .pocDlHead .pocDlArrow { flex: none; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin: 0 0 0 -6px; padding: 0; border: 0; }
+    .pocDlArrow svg { transition: transform .15s; }
+    .pocDlArrow.open svg { transform: rotate(90deg); }
     .pocDlTitle { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
     .pocDlDetail { margin-top: 3px; font-size: 12px; opacity: .65; }
     .pocDlRow progress, .pocDlTrack progress { width: 100%; height: 4px; margin-top: 6px; -webkit-appearance: none; appearance: none; border: 0; border-radius: 2px; background: var(--dl-line); overflow: hidden; }
@@ -154,8 +173,9 @@
     /* ---- Settings: the Electron app's panel (src/settings/settingsPanel.css),
        scoped so its generic selectors don't touch SoundCloud's page. ---- */
     .pocSettings { --bg-primary: #1a1a1a; --bg-secondary: #262626; --bg-hover: rgba(255, 255, 255, .08); --text-primary: #fff; --text-secondary: rgba(255, 255, 255, .6); --accent: #ff5500; --border: rgba(255, 255, 255, .1); --track: rgba(255, 255, 255, .2);
-      position: fixed; top: 32px; right: 0; bottom: 0; z-index: 2147483001; width: min(420px, 100vw); display: flex; flex-direction: column; font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--text-primary); background: var(--bg-primary); border-left: 1px solid var(--border); user-select: none; -webkit-user-select: none; -webkit-font-smoothing: antialiased;
+      position: fixed; top: 32px; right: 0; bottom: 0; z-index: 2147483001; width: min(380px, 100vw); display: flex; flex-direction: column; font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--text-primary); background: var(--bg-primary); border-left: 1px solid var(--border); user-select: none; -webkit-user-select: none; -webkit-font-smoothing: antialiased;
       opacity: 0; transform: translateX(16px); pointer-events: none; transition: opacity .15s, transform .15s; }
+    html.poc-oled .pocSettings { --bg-primary: #000; --bg-secondary: #1a1a1a; }
     html.theme-light .pocSettings { --bg-primary: #fff; --bg-secondary: #f3f3f3; --bg-hover: rgba(0, 0, 0, .06); --text-primary: #222; --text-secondary: rgba(0, 0, 0, .6); --border: rgba(0, 0, 0, .12); --track: rgba(0, 0, 0, .2); }
     .pocSettings.visible { opacity: 1; transform: none; pointer-events: auto; }
     .pocSettings * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -163,7 +183,8 @@
     .pocSettings h1 { font-size: 18px; font-weight: 600; }
     .pocSettings .close-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
     .pocSettings .close-btn:hover { background: var(--bg-hover); }
-    .pocSettings nav { display: flex; gap: 18px; padding: 8px 20px 0; border-bottom: 1px solid var(--border); }
+    .pocSettings nav { display: flex; gap: 16px; padding: 8px 20px 0; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+    .pocSettings nav button { flex: none; white-space: nowrap; }
     .pocSettings nav button { padding: 6px 0 8px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-secondary); font: inherit; font-size: 14px; cursor: pointer; }
     .pocSettings nav button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
     .pocSettings main { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 20px; }
@@ -208,7 +229,8 @@
         <div class="title-bar"></div>
       </div>
       <div class="header-center">
-        <div class="tab-group"><div class="tab"><img class="tab-icon" alt=""><span class="tab-title"></span><span class="tab-path"></span><input class="tab-url" spellcheck="false" aria-label="Address"></div></div>
+        <div class="tab-group single"><div class="tab active"><img class="tab-icon" alt=""><span class="tab-title"></span><span class="tab-path"></span><input class="tab-url" spellcheck="false" aria-label="Address"><button type="button" class="tab-close" title="Close Tab" aria-label="Close Tab">${icon('M11 5L5 11m6 0L5 5')}</button></div></div>
+          <div class="nav-button pocNewTab" data-cmd="newtab" title="New Tab">${icon('M8 3.5v9M3.5 8h9')}</div>
       </div>
       <div class="header-side">
         <div class="title-bar"></div>
@@ -223,7 +245,7 @@
       <header class="panel-header"><h1>Settings</h1><button class="close-btn" title="Close">${icon('M12 4L4 12m8 0L4 4')}</button></header>
       <nav>
         <button data-tab="general" class="active">General</button>
-        <button data-tab="appearance">Appearance</button>
+        <button data-tab="downloads">Downloads</button>
         <button data-tab="integrations">Integrations</button>
         <button data-tab="advanced">Advanced</button>
       </nav>
@@ -234,9 +256,19 @@
           <h2>Window</h2>
           <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label>
           <label class="row"><span>Minimize to tray</span><span class="toggle"><input type="checkbox" data-setting="minimizeToTray"><span class="slider"></span></span></label>
-          <p class="hint">Closing the window keeps SoundCloud playing in the tray.</p></section>
-        <section data-tab="appearance" hidden><h2>Theme</h2>
-          <div class="row"><span>Theme</span><select data-setting="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="system">Match system</option></select></div></section>
+          <p class="hint">Closing the window keeps SoundCloud playing in the tray.</p>
+          <h2>Theme</h2>
+          <div class="row"><span>Theme</span><select data-setting="theme"><option value="dark">Dark</option><option value="oled">OLED (true black)</option><option value="light">Light</option><option value="system">Match system</option></select></div></section>
+        <section data-tab="downloads" hidden><h2>Downloads</h2>
+          <label class="field"><span>Folder</span><input class="textInput" data-setting="downloadFolder" placeholder="Your Downloads folder" spellcheck="false"></label>
+          <div class="buttons"><button class="btn" data-dl-open>Open folder</button></div>
+          <label class="row"><span>Downloads button</span><span class="toggle"><input type="checkbox" data-setting="downloadButton"><span class="slider"></span></span></label>
+          <p class="hint">Off hides it from the window bar; the panel still opens when a download starts.</p>
+          <label class="row"><span>Download with my account</span><span class="toggle"><input type="checkbox" data-setting="downloadUseAccount"><span class="slider"></span></span></label>
+          <p class="hint">Signed in, Go+ tracks download in full; off, they come as 30-second previews.</p>
+          <label class="field"><span>File name</span><input class="textInput" data-setting="downloadTemplate" placeholder="%(uploader)s - %(title)s.%(ext)s" spellcheck="false"></label>
+          <label class="field"><span>Album and playlist folder</span><input class="textInput" data-setting="downloadPlaylistFolder" placeholder="%(playlist_uploader)s - %(playlist_title)s" spellcheck="false"></label>
+          <p class="hint">yt-dlp output templates; empty uses the default shown.</p></section>
         <section data-tab="integrations" hidden><h2>Discord</h2>
           <label class="row"><span>Discord Rich Presence</span><span class="toggle"><input type="checkbox" data-setting="discord"><span class="slider"></span></span></label>
           <p class="hint">Shows the track you're playing on your Discord profile.</p>
@@ -261,7 +293,7 @@
     <aside class="pocDownloads" hidden>
       <header><b>Downloads</b><span><button type="button" data-dl="open-folder">Open folder</button><button type="button" data-dl="clear">Clear</button><button type="button" data-dl="close" title="Close" aria-label="Close">×</button></span></header>
       <div class="pocDlList"></div>
-      <p class="pocDlEmpty">Use the download button under a track, album or playlist. Downloads need yt-dlp (brew install yt-dlp); with ffmpeg too, files get their cover and tags.</p>
+      <p class="pocDlEmpty">Use the download button under a track, album or playlist. Downloads need yt-dlp (${isWin ? 'winget install yt-dlp' : 'brew install yt-dlp'}); with ffmpeg too, files get their cover and tags.</p>
     </aside>`;
 
   // SoundCloud's router follows pushState + popstate (the Electron app's
@@ -312,9 +344,41 @@
     const root = document.createElement('div');
     root.innerHTML = markup;
     document.body.append(...root.children);
+
+    // --- Page scrollbar from under our bar to above the player; shows while
+    // scrolling or hovered, as an overlay scrollbar would, and drags.
+    const thumb = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'pocScroll' }));
+    let fade;
+    const scrollGeometry = () => {
+      const player = document.querySelector('.playControls__inner');
+      const bottom = player ? Math.max(0, innerHeight - player.getBoundingClientRect().top) : 0;
+      const track = innerHeight - 32 - bottom, total = document.documentElement.scrollHeight;
+      const size = Math.max(32, track * innerHeight / total);
+      return { track, size, max: total - innerHeight };
+    };
+    const drawScroll = flash => {
+      const { track, size, max } = scrollGeometry();
+      thumb.style.display = max > 1 && track > size ? 'block' : 'none';
+      thumb.style.top = 32 + (track - size) * Math.min(1, scrollY / max) + 'px';
+      thumb.style.height = size + 'px';
+      if (flash === true) { thumb.classList.add('on'); clearTimeout(fade); fade = setTimeout(() => thumb.classList.remove('on'), 1000); }
+    };
+    addEventListener('scroll', () => drawScroll(true), { passive: true });
+    addEventListener('resize', drawScroll);
+    new ResizeObserver(() => drawScroll()).observe(document.body);
+    thumb.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      thumb.setPointerCapture(e.pointerId);
+      thumb.classList.add('drag');
+      const { track, size, max } = scrollGeometry(), y0 = e.clientY, s0 = scrollY;
+      const move = m => scrollTo(scrollX, s0 + (m.clientY - y0) * max / (track - size));
+      thumb.addEventListener('pointermove', move);
+      thumb.addEventListener('pointerup', () => { thumb.removeEventListener('pointermove', move); thumb.classList.remove('drag'); }, { once: true });
+    });
     const bar = document.querySelector('.pocTitlebar'), panel = document.querySelector('.pocSettings');
     const $ = (sel, el = bar) => el.querySelector(sel);
     const tab = $('.tab'), urlInput = $('.tab-url'), search = $('.pocSearch');
+    let lastInfo = '';
 
     // --- Back/forward over the real history; the Navigation API knows when
     // there is nowhere to go (all buttons stay enabled where it is missing).
@@ -330,6 +394,8 @@
       tab.title = title;
       const fav = document.querySelector('link[rel~="icon"]')?.href;
       if (fav && $('.tab-icon').getAttribute('src') !== fav) $('.tab-icon').src = fav;
+      const info = JSON.stringify({ title, path, icon: fav || '' });
+      if (info !== lastInfo) { lastInfo = info; post('tab:info:' + info); }
     };
     window.navigation?.addEventListener('currententrychange', paint);
     addEventListener('popstate', paint);
@@ -342,6 +408,47 @@
       forward: () => history.forward(),
       reload: () => location.reload(),
       settings: () => toggleSettings(),
+      newtab: () => post('tab:new'),
+    };
+
+    // --- Tabs: main.rs keeps one page per tab and shows one. This page's tab
+    // is the shown one; the others come from __tabs, as their bars reported them.
+    const myId = window.__tabId ?? 0, group = $('.tab-group');
+    window.__tabs = ({ tabs }) => {
+      group.classList.toggle('single', tabs.length < 2);
+      group.replaceChildren(...tabs.map(t => {
+        if (t.id === myId) return tab;
+        const el = Object.assign(document.createElement('div'), { className: 'tab', title: t.info.title || '' });
+        el.dataset.id = t.id;
+        el.innerHTML = `<img class="tab-icon" alt=""><span class="tab-title"></span><button type="button" class="tab-close" title="Close Tab" aria-label="Close Tab">${icon('M11 5L5 11m6 0L5 5')}</button>`;
+        if (t.info.icon) el.querySelector('.tab-icon').src = t.info.icon;
+        el.querySelector('.tab-title').textContent = t.info.title || 'SoundCloud';
+        return el;
+      }));
+    };
+    const tabId = t => t.dataset.id ?? myId;
+    // (capture: a close on this page's tab must not start editing its address)
+    group.addEventListener('click', e => {
+      const t = e.target.closest('.tab');
+      if (!t) return;
+      if (e.target.closest('.tab-close')) { e.stopPropagation(); post('tab:close:' + tabId(t)); }
+      else if (t !== tab) post('tab:switch:' + t.dataset.id);
+    }, true);
+    // middle-click closes a tab
+    group.addEventListener('auxclick', e => {
+      const t = e.target.closest('.tab');
+      if (e.button === 1 && t && !group.classList.contains('single')) { e.preventDefault(); post('tab:close:' + tabId(t)); }
+    });
+    // Middle- or Ctrl/Cmd-click on a SoundCloud link opens it in a background
+    // tab; other sites go to the browser (main.rs's new-window handler).
+    const openInTab = e => {
+      const a = e.target.closest?.('a[href]');
+      if (!a || !(e.type === 'auxclick' ? e.button === 1 : e.button === 0 && (isMac ? e.metaKey : e.ctrlKey))) return;
+      const url = new URL(a.href, location.href);
+      if (url.origin !== location.origin) return;
+      e.preventDefault();
+      e.stopPropagation();
+      post('tab:open:' + url.href);
     };
     bar.addEventListener('click', e => { const b = e.target.closest('[data-cmd]'); if (b) commands[b.dataset.cmd](); });
     // Mouse back/forward buttons.
@@ -505,12 +612,17 @@
     for (const el of [bar, panel]) for (const t of ['keydown', 'keypress', 'keyup']) el.addEventListener(t, e => e.stopPropagation());
 
     // --- Settings: saved by the Rust side (settings.json).
-    const settings = { navButtons: true, minimizeToTray: true, autoUpdate: true, theme: 'dark', discord: true, adblock: true };
+    const settings = { navButtons: true, downloadButton: true, downloadUseAccount: true, downloadFolder: '', downloadTemplate: '', downloadPlaylistFolder: '', minimizeToTray: true, autoUpdate: true, theme: 'dark', discord: true, adblock: true };
     if (window.__appVersion) panel.querySelector('.pocVersion').textContent = `This is version ${window.__appVersion}.`;
     const darkQuery = matchMedia('(prefers-color-scheme: dark)');
     function applySettings() {
       $('.navigation-controls').classList.toggle('hidden', !settings.navButtons);
+      $('.pocDlBtn').hidden = !settings.downloadButton; // the panel still opens when a download starts
       const dark = settings.theme === 'system' ? darkQuery.matches : settings.theme !== 'light';
+      const oled = settings.theme === 'oled';
+      document.documentElement.classList.toggle('poc-oled', oled);
+      oledStyle(document, oled);
+      oledStyle(document.querySelector('.webiIframe')?.contentDocument, oled);
       // SoundCloud's own theme classes, as the Electron app's applyThemeToContent sets them
       for (const el of [document.documentElement, document.body]) {
         el.classList.toggle('theme-dark', dark);
@@ -519,7 +631,15 @@
       // the track page's frame takes it over SoundCloud's postMessage protocol
       document.querySelector('.webiIframe')?.contentWindow?.postMessage({ kind: 'set-theme', theme: dark ? 'dark' : 'light' }, location.origin);
     }
+    // OLED: the Electron app's themes/OLED.css (window.__oledCss), in the page and the track page's frame.
+    function oledStyle(doc, on) {
+      if (!doc?.head) return;
+      const el = doc.getElementById('pocOled');
+      if (on && !el) doc.head.appendChild(Object.assign(doc.createElement('style'), { id: 'pocOled', textContent: window.__oledCss || '' }));
+      else if (!on) el?.remove();
+    }
     darkQuery.addEventListener('change', applySettings);
+    panel.querySelector('[data-dl-open]').onclick = () => post('downloads:open-folder');
     const inputs = panel.querySelectorAll('[data-setting]');
     const showSettings = () => inputs.forEach(el => { if (el.type === 'checkbox') el.checked = !!settings[el.dataset.setting]; else el.value = settings[el.dataset.setting]; });
     for (const el of inputs) el.addEventListener('change', () => {
@@ -573,7 +693,8 @@
         const many = it.tracks.length > 1;
         if (many) {
           const open = expanded.has(it.id);
-          const arrow = head.appendChild(make('button', 'pocDlArrow', open ? '▾' : '▸'));
+          const arrow = head.appendChild(make('button', open ? 'pocDlArrow open' : 'pocDlArrow'));
+          arrow.innerHTML = icon('M6 3.5 10.5 8 6 12.5');
           Object.assign(arrow, { title: open ? 'Hide the tracks' : 'Show every track' });
           arrow.dataset.dl = 'expand';
         }
@@ -645,7 +766,7 @@
       url = url.split(/[?#]/)[0];
       toggleDownloads(true);
       const info = await describe(url).catch(() => ({ title: '', tracks: [] }));
-      const token = document.cookie.split('; ').find(c => c.startsWith('oauth_token='))?.slice(12) || '';
+      const token = settings.downloadUseAccount === false ? '' : document.cookie.split('; ').find(c => c.startsWith('oauth_token='))?.slice(12) || '';
       post('download:' + JSON.stringify({ url, token, ...info }));
     };
     const addDownloadButtons = () => {
@@ -682,7 +803,10 @@
     };
     // Note: polls the track page's frame each second (its DOM isn't under
     // our observer); hook the frame's own MutationObserver if this shows up in CPU.
-    setInterval(() => { if (document.querySelector('.webiIframe:not(.sc-hidden)')) addDownloadButtons(); }, 1000);
+    setInterval(() => {
+      if (document.querySelector('.webiIframe:not(.sc-hidden)')) addDownloadButtons();
+      oledStyle(document.querySelector('.webiIframe')?.contentDocument, settings.theme === 'oled');
+    }, 1000);
     $('.close-btn', panel).onclick = () => toggleSettings(false);
 
     // Last.fm: the Rust side signs in (browser approval) and scrobbles.
@@ -711,11 +835,13 @@
     // --- Shortcuts, also while the track page's frame has the focus.
     const onKey = e => {
       if (e.key === 'Escape' && panel.classList.contains('visible')) return toggleSettings(false);
+      if (e.ctrlKey && e.key === 'Tab') { e.preventDefault(); return post('tab:cycle:' + (e.shiftKey ? -1 : 1)); }
       if (!(isMac ? e.metaKey : e.ctrlKey) || e.shiftKey || e.altKey) return;
-      const cmd = { '[': commands.back, ']': commands.forward, r: commands.reload, ',': () => toggleSettings(), f: () => search.q.focus(), l: editUrl }[e.key];
+      if (/^[1-9]$/.test(e.key)) { e.preventDefault(); return post('tab:index:' + e.key); }
+      const cmd = { '[': commands.back, ']': commands.forward, r: commands.reload, ',': () => toggleSettings(), f: () => search.q.focus(), l: editUrl, t: commands.newtab, w: () => post('tab:close') }[e.key];
       if (cmd) { e.preventDefault(); cmd(); }
     };
-    const hook = w => { try { if (!w.__pocKeys) { w.__pocKeys = true; w.addEventListener('keydown', onKey, true); } } catch {} };
+    const hook = w => { try { if (!w.__pocKeys) { w.__pocKeys = true; w.addEventListener('keydown', onKey, true); w.addEventListener('click', openInTab, true); w.addEventListener('auxclick', openInTab, true); } } catch {} };
     hook(window);
     // (a frame's load event stops at the document, never reaching window)
     document.addEventListener('load', e => { if (e.target.tagName === 'IFRAME') hook(e.target.contentWindow); }, true);
@@ -743,7 +869,11 @@
     // --- Avatar menu gets the account items from the more menu. They only
     // exist while that menu is open, so each one opens it and clicks the real
     // link: SoundCloud's own handlers (sign out especially) do the work.
-    const accountItems = [['Support', 'a[href^="https://help.soundcloud.com"]'], ['Subscription', 'a[href^="/you/subscriptions"]'], ['Settings', 'a[href="/settings"]'], ['Sign out', 'a[href="/logout"]']];
+    const accountItems = [
+      ['Support', 'a[href^="https://help.soundcloud.com"]', 'M8 14.25a6.25 6.25 0 1 0 0-12.5 6.25 6.25 0 0 0 0 12.5zM6.25 6.25a1.75 1.75 0 1 1 2.5 1.6c-.5.25-.75.6-.75 1.15v.25M8 11.25v.01'],
+      ['Subscription', 'a[href^="/you/subscriptions"]', 'M2 4h12v8H2zM2 6.75h12M4.5 9.5h2.5'],
+      ['Settings', 'a[href="/settings"]', 'M2.5 4.5h6.5M12 4.5h1.5M2.5 11.5h1.5M7 11.5h6.5M10.5 3v3M5.5 10v3'],
+      ['Sign out', 'a[href="/logout"]', 'M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6.5']];
     const viaMoreMenu = sel => {
       document.querySelector('.header__userNavUsernameButton')?.click(); // close the avatar menu
       document.querySelector('.header__moreButton')?.click();
@@ -771,15 +901,15 @@
         const row = list.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: rowClass + ' pocAccountRow', href: '#' }));
         row.append(Object.assign(document.createElement(acc.avatar ? 'img' : 'span'), { className: 'pocAccountAvatar', src: acc.avatar || '' }),
           Object.assign(document.createElement('span'), { className: 'pocAccountName', textContent: acc.name || 'Signed out' }));
-        if (current) row.append(Object.assign(document.createElement('span'), { className: 'pocAccountCheck', textContent: '✓', title: 'Current account' }));
+        if (current) row.append(Object.assign(document.createElement('span'), { className: 'pocAccountCheck', innerHTML: icon('M3.5 8.5l3 3 6-7'), title: 'Current account' }));
         else if (acc.id !== 'default') {
-          const x = row.appendChild(Object.assign(document.createElement('button'), { className: 'pocAccountRemove', textContent: '×', title: 'Remove this account and its sign-in from the app' }));
+          const x = row.appendChild(Object.assign(document.createElement('button'), { className: 'pocAccountRemove', innerHTML: icon('M4.5 4.5l7 7m0-7l-7 7'), title: 'Remove this account and its sign-in from the app' }));
           x.addEventListener('click', e => {
             e.preventDefault(); e.stopPropagation();
             // (WKWebView has no confirm() dialog: a second click confirms)
             if (!x.classList.contains('confirm')) {
               x.classList.add('confirm'); x.textContent = 'Remove?';
-              return setTimeout(() => { x.classList.remove('confirm'); x.textContent = '×'; }, 3000);
+              return setTimeout(() => { x.classList.remove('confirm'); x.innerHTML = icon('M4.5 4.5l7 7m0-7l-7 7'); }, 3000);
             }
             post('account:remove:' + acc.id);
             accounts.accounts = accounts.accounts.filter(a => a !== acc);
@@ -798,15 +928,26 @@
       if (!menu || menu.querySelector('.pocAccount')) return;
       accountRows(menu.appendChild(Object.assign(document.createElement('ul'), { className: 'headerMenu__list sc-list-nostyle pocAccounts' })), 'headerMenu__link');
       const ul = menu.appendChild(Object.assign(document.createElement('ul'), { className: 'headerMenu__list sc-list-nostyle pocAccount' }));
-      for (const [label, sel] of accountItems) {
-        const a = ul.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: 'headerMenu__link', href: '#', textContent: label }));
+      for (const [label, sel, d] of accountItems) {
+        // SoundCloud's own item markup: <div><svg class="profileMenu__icon"></div> Label
+        const a = ul.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: 'headerMenu__link', href: '#' }));
+        a.innerHTML = `<div>${icon(d).replace('<svg', '<svg class="profileMenu__icon"')}</div>`;
+        a.append(label);
         a.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); viaMoreMenu(sel); });
       }
     };
     let buttonsQueued = false;
     // (a timer, not requestAnimationFrame, which waits while the window is hidden)
     const queueButtons = () => { if (!buttonsQueued) { buttonsQueued = true; setTimeout(() => { buttonsQueued = false; addDownloadButtons(); }, 100); } };
-    new MutationObserver(() => { renameArtist(); mergeMenus(); queueButtons(); queueFit(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    // SoundCloud places the menu from the avatar's old spot; right-align it to the avatar.
+    const alignMenu = () => {
+      const dd = document.querySelector('.dropdownMenu:has(.profileMenu)'), btn = document.querySelector('.header__userNavUsernameButton');
+      if (!dd || !btn) return;
+      const left = Math.round(btn.getBoundingClientRect().right - dd.offsetWidth) + 'px';
+      if (dd.style.left !== left) dd.style.left = left;
+    };
+    addEventListener('resize', alignMenu);
+    new MutationObserver(() => { renameArtist(); mergeMenus(); alignMenu(); queueButtons(); queueFit(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     renameArtist();
     queueFit();
 

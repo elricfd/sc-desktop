@@ -44,16 +44,56 @@ fn safari_ua() -> String {
     )
 }
 
+enum Ev {
+    // run in every tab (statuses, the downloads list), or in the shown one (stdin)
+    Js(String),
+    JsActive(String),
+    Snap(String),
+    Place(f64, f64, f64, f64),
+    // a tab's IPC message; handled here, where the window and tabs live
+    Ipc(u32, String),
+    // open a tab (shown or in the background), load one once its ad rules are in
+    NewTab(String, bool),
+    LoadTab(u32, String),
+    Tray(tray::Action),
+    // account switcher: start again on another account, drop an old one's store
+    Relaunch,
+    RemoveStore(String),
+}
+
+/// One page per tab, as the Electron app's BrowserViews; only the shown one is visible.
+struct Tab {
+    id: u32,
+    view: wry::WebView,
+    // what its title bar last reported: { title, path, icon }
+    info: serde_json::Value,
+}
+
+// The webview profile every tab shares: WebView2's folder on Windows; macOS
+// picks its data store per webview.
+#[cfg(target_os = "windows")]
+type Ctx = wry::WebContext;
+#[cfg(target_os = "macos")]
+type Ctx = ();
+
+const HOME: &str = "https://soundcloud.com";
+
+/// A soundcloud.com address, the only kind a tab opens.
+fn soundcloud_url(url: &str) -> bool {
+    url == HOME || url.starts_with("https://soundcloud.com/")
+}
+
 fn main() -> wry::Result<()> {
     let settings = load_settings();
     let setting = |k: &str| settings[k].as_bool().unwrap_or(true);
     let on = |k: &str, default: bool| std::env::var(k).map(|v| v != "0").unwrap_or(default);
 
-    let url = std::env::args().nth(1).unwrap_or_else(|| "https://soundcloud.com".into());
+    let url = std::env::args().nth(1).unwrap_or_else(|| HOME.into());
     let adblock = on("ADBLOCK", setting("adblock"));
     let custom = std::env::var("UI").as_deref() == Ok("custom");
+    let trace = on("TRACE", false);
     // Discord can be switched off and on from the settings panel while running.
-    let discord = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(on("DISCORD", setting("discord"))));
+    let mut discord = on("DISCORD", setting("discord"));
     let (np_tx, np_rx) = std::sync::mpsc::channel::<String>();
     std::thread::spawn(move || presence::run(np_rx));
     let scrobbling = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(settings["lastfm"].as_bool().unwrap_or(false)));
@@ -61,25 +101,11 @@ fn main() -> wry::Result<()> {
     let fm_enabled = scrobbling.clone();
     std::thread::spawn(move || lastfm::run(fm_rx, fm_enabled));
 
-    enum Ev {
-        Js(String),
-        Snap(String),
-        Place(f64, f64, f64, f64),
-        Load,
-        Drag,
-        Zoom,
-        // window buttons and edges drawn by the page (frameless window)
-        Minimize,
-        Close,
-        Frameless,
-        Resize(tao::window::ResizeDirection),
-        Tray(tray::Action),
-        // account switcher: start again on another account, drop an old one's store
-        Relaunch,
-        RemoveStore(String),
-    }
     let event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     let proxy = event_loop.create_proxy();
+    for id in accounts::prune(&data_dir()) {
+        let _ = proxy.send_event(Ev::RemoveStore(id));
+    }
     let stdin_proxy = proxy.clone();
     std::thread::spawn(move || {
         for line in std::io::stdin().lines().map_while(Result::ok) {
@@ -89,7 +115,7 @@ fn main() -> wry::Result<()> {
                 _ if line == "QUIT" => Ev::Tray(tray::Action::Quit), // quit as the tray's Quit does
                 (Some(path), _) => Ev::Snap(path.to_string()),
                 (_, Some(v)) if v.len() == 4 => Ev::Place(v[0], v[1], v[2], v[3]),
-                _ => Ev::Js(line),
+                _ => Ev::JsActive(line),
             };
             if stdin_proxy.send_event(ev).is_err() {
                 break;
@@ -136,175 +162,33 @@ fn main() -> wry::Result<()> {
     let dls = downloads::Downloads::new(move |list| {
         let _ = list_proxy.send_event(Ev::Js(format!("window.__downloads && window.__downloads({list})")));
     });
-    let page_dls = dls.clone();
-    let page_proxy = proxy.clone();
-    let dl_proxy = proxy.clone();
-    let page_discord = discord.clone();
-    let page_scrobbling = scrobbling.clone();
 
-    // fixes.js works around WebKit bugs only.
-    #[cfg(target_os = "macos")]
-    let builder = WebViewBuilder::new().with_user_agent(safari_ua()).with_initialization_script(include_str!("fixes.js"));
-    // an extra account signs in inside its own data store (macOS 14+)
-    #[cfg(target_os = "macos")]
-    let builder = match accounts::store_id(&accounts::current(&data_dir())) {
-        Some(id) => wry::WebViewBuilderExtDarwin::with_data_store_identifier(builder, id),
-        None => builder,
-    };
     // WebView2's profile (cookies, the Widevine CDM) goes beside our settings
-    // instead of next to the exe.
+    // instead of next to the exe; every tab shares it.
     #[cfg(target_os = "windows")]
-    let mut context = wry::WebContext::new(Some(data_dir().join(match accounts::current(&data_dir()).as_str() {
+    let mut context: Ctx = wry::WebContext::new(Some(data_dir().join(match accounts::current(&data_dir()).as_str() {
         "default" => "webview".to_string(),
         id => format!("webview-{id}"),
     })));
-    // Overlay scrollbars like macOS, instead of Windows' classic ones beside
-    // every scrolling box (menus, queue, the page).
-    #[cfg(target_os = "windows")]
-    let builder = {
-        use wry::{ScrollBarStyle, WebViewBuilderExtWindows};
-        WebViewBuilder::new_with_web_context(&mut context).with_scroll_bar_style(ScrollBarStyle::FluentOverlay)
-    };
-    let mut builder = builder
-        .with_initialization_script_for_main_only(include_str!("clean.js"), false)
-        .with_initialization_script(include_str!("nowplaying.js"))
-        // SoundCloud's track page downloads by sending its frame to the file on
-        // their CDN and relying on the attachment header. WebKit plays audio it
-        // can show instead, so take those navigations and save the file.
-        .with_navigation_handler(move |url| {
-            let host = url.strip_prefix("https://").and_then(|r| r.split(['/', '?', '#']).next()).unwrap_or("");
-            if !host.ends_with(".sndcdn.com") {
-                return true;
-            }
-            let proxy = dl_proxy.clone();
-            download(url, move |msg| {
-                let _ = proxy.send_event(Ev::Js(format!("window.__downloadStatus && window.__downloadStatus({})", serde_json::Value::from(msg))));
-            });
-            false
-        })
-        .with_ipc_handler(move |req| {
-            use std::sync::atomic::Ordering;
-            let body = req.body();
-            // tells the settings panel how the Last.fm connection is going
-            let lastfm_status = |v: serde_json::Value| {
-                let _ = page_proxy.send_event(Ev::Js(format!("window.__lastfmStatus && window.__lastfmStatus({v})")));
-            };
-            if let Some(np) = body.strip_prefix("np:") {
-                if page_discord.load(Ordering::Relaxed) {
-                    let _ = np_tx.send(np.to_string());
-                }
-                let _ = fm_tx.send(np.to_string());
-            } else if let Some(json) = body.strip_prefix("lastfm:connect:") {
-                let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
-                let (key, secret) = (v["key"].as_str().unwrap_or("").trim().to_string(), v["secret"].as_str().unwrap_or("").trim().to_string());
-                if key.is_empty() || secret.is_empty() {
-                    return lastfm_status(serde_json::json!({ "state": "error", "message": "Enter your API key and secret first." }));
-                }
-                let (proxy, fm_tx) = (page_proxy.clone(), fm_tx.clone());
-                lastfm::connect(key, secret, move |v| {
-                    if v["state"] == "connected" {
-                        let _ = fm_tx.send(lastfm::RELOAD.into());
-                    }
-                    let _ = proxy.send_event(Ev::Js(format!("window.__lastfmStatus && window.__lastfmStatus({v})")));
-                });
-            } else if body == "lastfm:disconnect" {
-                lastfm::disconnect();
-                let _ = fm_tx.send(lastfm::RELOAD.into());
-                lastfm_status(serde_json::json!({ "state": "disconnected", "connected": false }));
-            } else if let Some(styles) = body.strip_prefix("styles:") {
-                save_styles(styles);
-            } else if let Some(json) = body.strip_prefix("settings:") {
-                let Ok(new) = serde_json::from_str::<serde_json::Value>(json) else { return };
-                page_scrobbling.store(new["lastfm"].as_bool().unwrap_or(false), Ordering::Relaxed);
-                let enabled = new["discord"].as_bool().unwrap_or(true);
-                if page_discord.swap(enabled, Ordering::Relaxed) && !enabled {
-                    let _ = np_tx.send(presence::CLEAR.into());
-                }
-                save_settings(&new);
-            } else if let Some(url) = body.strip_prefix("open:") {
-                // links meant for the browser (the page itself never navigates away)
-                if url.starts_with("https://") {
-                    let _ = open_url(url);
-                }
-            } else if let Some(req) = body.strip_prefix("download:") {
-                // the download buttons chrome.js puts under tracks, albums and playlists
-                if let Ok(req) = serde_json::from_str(req) {
-                    page_dls.start(&req);
-                }
-            } else if let Some(cmd) = body.strip_prefix("downloads:") {
-                let mut parts = cmd.split(':');
-                let (what, id, track) = (parts.next().unwrap_or(""), parts.next().and_then(|n| n.parse().ok()), parts.next().and_then(|n| n.parse().ok()));
-                match (what, id) {
-                    ("cancel", Some(id)) => page_dls.cancel(id),
-                    ("show", Some(id)) => {
-                        if let Some(file) = page_dls.file(id, track) {
-                            downloads::reveal(&file, true);
-                        }
-                    }
-                    ("open-folder", _) => downloads::reveal(&downloads::folder(), false),
-                    ("clear", _) => page_dls.clear(),
-                    ("get", _) => {
-                        let _ = page_proxy.send_event(Ev::Js(format!("window.__downloads && window.__downloads({})", page_dls.list())));
-                    }
-                    _ => {}
-                }
-            } else if let Some(me) = body.strip_prefix("account:me:") {
-                if let Ok(me) = serde_json::from_str(me) {
-                    accounts::set_me(&data_dir(), &me);
-                }
-            } else if let Some(id) = body.strip_prefix("account:switch:") {
-                if id != accounts::current(&data_dir()) {
-                    accounts::switch(&data_dir(), id);
-                    let _ = page_proxy.send_event(Ev::Relaunch);
-                }
-            } else if body == "account:add" {
-                accounts::add(&data_dir());
-                let _ = page_proxy.send_event(Ev::Relaunch);
-            } else if let Some(id) = body.strip_prefix("account:remove:") {
-                if let Some(id) = accounts::remove(&data_dir(), id) {
-                    let _ = page_proxy.send_event(Ev::RemoveStore(id));
-                }
-            } else if body == "chrome:ready" {
-                // chrome.js after a load: the settings saved since the launch
-                let _ = page_proxy.send_event(Ev::Js(format!("window.__chromeState && window.__chromeState({}, {})", load_settings(), lastfm::status())));
-            } else if body == "reload" {
-                // signed in or out in an embedded SoundCloud page: start over with that session
-                let _ = page_proxy.send_event(Ev::Load);
-            } else if body == "drag" {
-                let _ = page_proxy.send_event(Ev::Drag);
-            } else if body == "zoom" {
-                let _ = page_proxy.send_event(Ev::Zoom);
-            } else if body == "minimize" {
-                let _ = page_proxy.send_event(Ev::Minimize);
-            } else if body == "close" {
-                let _ = page_proxy.send_event(Ev::Close);
-            } else if body == "frameless" {
-                let _ = page_proxy.send_event(Ev::Frameless);
-            } else if let Some(dir) = body.strip_prefix("resize:").and_then(resize_direction) {
-                let _ = page_proxy.send_event(Ev::Resize(dir));
-            } else {
-                println!("[page] {body}");
-            }
-        })
-        .with_devtools(true)
-        .with_autoplay(true);
-    if !custom {
-        // our title bar and settings over soundcloud.com, with the saved settings
-        let state = format!("window.__settings = {settings}; window.__lastfm = {}; window.__appVersion = '{}'; window.__accounts = {};", lastfm::status(), env!("CARGO_PKG_VERSION"), accounts::load(&data_dir()));
-        builder = builder.with_initialization_script_for_main_only(state, true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
-    }
-    if on("TRACE", false) {
-        builder = builder.with_initialization_script(include_str!("trace.js"));
-    }
-    let webview = builder.build(&window)?;
+    #[cfg(target_os = "macos")]
+    let mut context: Ctx = ();
+    let mut tabs: Vec<Tab> = Vec::new();
+    let mut active = 0u32;
+    let mut next_id = 0u32;
     // Rules first, then the page, so its first requests are filtered too.
-    if adblock {
-        adblock::install(&webview, move || {
-            let _ = proxy.send_event(Ev::Load);
-        });
-    } else {
-        let _ = proxy.send_event(Ev::Load);
-    }
+    let tab_proxy = proxy.clone();
+    let open_tab = move |id: u32, url: String, window: &tao::window::Window, context: &mut Ctx| -> wry::Result<Tab> {
+        let view = build_tab(id, window, &tab_proxy, custom, trace, context)?;
+        let p = tab_proxy.clone();
+        let load = move || {
+            let _ = p.send_event(Ev::LoadTab(id, url.clone()));
+        };
+        if adblock { adblock::install(&view, load) } else { load() }
+        Ok(Tab { id, view, info: serde_json::json!({}) })
+    };
+    tabs.push(open_tab(next_id, url, &window, &mut context)?);
+    let _ = tabs[0].view.set_bounds(tab_bounds(&window, true));
+    next_id += 1;
 
     // Closing hides the window when "Minimize to tray" is on (the default, as
     // in the Electron app); the tray, the Dock or Quit bring it back or end it.
@@ -320,8 +204,26 @@ fn main() -> wry::Result<()> {
         window.set_minimized(false);
         window.set_focus();
     };
+    // every tab's bar lists all of them
+    let send_tabs = |tabs: &[Tab]| {
+        let state = serde_json::json!({ "tabs": tabs.iter().map(|t| serde_json::json!({ "id": t.id, "info": t.info })).collect::<Vec<_>>() });
+        for t in tabs {
+            let _ = t.view.evaluate_script(&format!("window.__tabs && window.__tabs({state})"));
+        }
+    };
+    // The others move off the window rather than hide: a hidden WebView2 stops
+    // drawing and shows a blank frame when it comes back.
+    let activate = |tabs: &[Tab], id: u32, window: &tao::window::Window| {
+        for t in tabs {
+            let _ = t.view.set_bounds(tab_bounds(window, t.id == id));
+        }
+        if let Some(t) = tabs.iter().find(|t| t.id == id) {
+            let _ = t.view.focus();
+        }
+    };
     event_loop.run(move |event, _, flow| {
         *flow = ControlFlow::Wait;
+        let shown = tabs.iter().find(|t| t.id == active).map(|t| &t.view);
         match event {
             // The tray (and the Dock icon) need the running app.
             Event::NewEvents(tao::event::StartCause::Init) => {
@@ -335,7 +237,9 @@ fn main() -> wry::Result<()> {
             Event::UserEvent(Ev::Tray(tray::Action::Show)) => show(&window),
             Event::UserEvent(Ev::Tray(tray::Action::Settings)) => {
                 show(&window);
-                let _ = webview.evaluate_script("window.__openSettings && window.__openSettings()");
+                if let Some(v) = shown {
+                    let _ = v.evaluate_script("window.__openSettings && window.__openSettings()");
+                }
             }
             Event::UserEvent(Ev::Tray(tray::Action::Quit)) => *flow = ControlFlow::Exit,
             Event::UserEvent(Ev::Relaunch) => {
@@ -358,46 +262,320 @@ fn main() -> wry::Result<()> {
                 updater::install(&update_ready);
             }
             Event::UserEvent(Ev::Js(js)) => {
-                let _ = webview.evaluate_script(&js);
+                for t in &tabs {
+                    let _ = t.view.evaluate_script(&js);
+                }
             }
-            Event::UserEvent(Ev::Snap(path)) => snapshot(&webview, path),
+            Event::UserEvent(Ev::JsActive(js)) => {
+                if let Some(v) = shown {
+                    let _ = v.evaluate_script(&js);
+                }
+            }
+            Event::UserEvent(Ev::Snap(path)) => {
+                if let Some(v) = shown {
+                    snapshot(v, path);
+                }
+            }
             Event::UserEvent(Ev::Place(x, y, w, h)) => {
                 window.set_outer_position(tao::dpi::LogicalPosition::new(x, y));
                 window.set_inner_size(tao::dpi::LogicalSize::new(w, h));
             }
-            Event::UserEvent(Ev::Load) if custom => load_custom(&webview, &settings),
-            // From a mousedown/double-click on our title bar.
-            Event::UserEvent(Ev::Drag) => {
-                let _ = window.drag_window();
-            }
-            Event::UserEvent(Ev::Zoom) => window.set_maximized(!window.is_maximized()),
-            Event::UserEvent(Ev::Minimize) => window.set_minimized(true),
-            Event::UserEvent(Ev::Close) => close(&window, flow),
-            Event::UserEvent(Ev::Resize(dir)) => {
-                let _ = window.drag_resize_window(dir);
-            }
-            // The page sends this once it draws its own window buttons, so the
-            // window is never left without a way to close it. macOS keeps its
-            // traffic lights over the page (see the window builder).
-            Event::UserEvent(Ev::Frameless) => {
-                #[cfg(target_os = "windows")]
-                {
-                    use tao::platform::windows::WindowExtWindows;
-                    window.set_decorations(false);
-                    window.set_undecorated_shadow(true);
+            Event::UserEvent(Ev::LoadTab(id, url)) => {
+                if let Some(t) = tabs.iter().find(|t| t.id == id) {
+                    if custom {
+                        load_custom(&t.view, &settings);
+                    } else {
+                        let _ = t.view.load_url(&url);
+                    }
                 }
             }
-            // so the page can swap its maximize and restore icons
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
-                let _ = webview.evaluate_script(&format!("window.__windowState && window.__windowState({{ maximized: {} }})", window.is_maximized()));
+            Event::UserEvent(Ev::NewTab(url, focus)) => {
+                if custom || !soundcloud_url(&url) {
+                    return;
+                }
+                match open_tab(next_id, url, &window, &mut context) {
+                    Ok(tab) => {
+                        // right after the shown tab, as browsers place them
+                        let at = tabs.iter().position(|t| t.id == active).map_or(tabs.len(), |i| i + 1);
+                        tabs.insert(at, tab);
+                        if focus {
+                            active = next_id;
+                        }
+                        next_id += 1;
+                        activate(&tabs, active, &window);
+                        send_tabs(&tabs);
+                    }
+                    Err(e) => eprintln!("tabs: could not open: {e}"),
+                }
             }
-            Event::UserEvent(Ev::Load) => {
-                let _ = webview.load_url(&url);
+            Event::UserEvent(Ev::Ipc(from, body)) => {
+                use std::sync::atomic::Ordering;
+                let reply = |js: String| {
+                    if let Some(t) = tabs.iter().find(|t| t.id == from) {
+                        let _ = t.view.evaluate_script(&js);
+                    }
+                };
+                if let Some(np) = body.strip_prefix("np:") {
+                    if discord {
+                        let _ = np_tx.send(np.to_string());
+                    }
+                    let _ = fm_tx.send(np.to_string());
+                } else if let Some(json) = body.strip_prefix("lastfm:connect:") {
+                    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+                    let (key, secret) = (v["key"].as_str().unwrap_or("").trim().to_string(), v["secret"].as_str().unwrap_or("").trim().to_string());
+                    if key.is_empty() || secret.is_empty() {
+                        return reply(format!("window.__lastfmStatus && window.__lastfmStatus({})", serde_json::json!({ "state": "error", "message": "Enter your API key and secret first." })));
+                    }
+                    let (p, fm_tx) = (proxy.clone(), fm_tx.clone());
+                    lastfm::connect(key, secret, move |v| {
+                        if v["state"] == "connected" {
+                            let _ = fm_tx.send(lastfm::RELOAD.into());
+                        }
+                        let _ = p.send_event(Ev::Js(format!("window.__lastfmStatus && window.__lastfmStatus({v})")));
+                    });
+                } else if body == "lastfm:disconnect" {
+                    lastfm::disconnect();
+                    let _ = fm_tx.send(lastfm::RELOAD.into());
+                    let _ = proxy.send_event(Ev::Js(format!("window.__lastfmStatus && window.__lastfmStatus({})", serde_json::json!({ "state": "disconnected", "connected": false }))));
+                } else if let Some(styles) = body.strip_prefix("styles:") {
+                    save_styles(styles);
+                } else if let Some(json) = body.strip_prefix("settings:") {
+                    let Ok(new) = serde_json::from_str::<serde_json::Value>(json) else { return };
+                    scrobbling.store(new["lastfm"].as_bool().unwrap_or(false), Ordering::Relaxed);
+                    let enabled = new["discord"].as_bool().unwrap_or(true);
+                    if discord && !enabled {
+                        let _ = np_tx.send(presence::CLEAR.into());
+                    }
+                    discord = enabled;
+                    save_settings(&new);
+                    // the other tabs' panels and themes follow
+                    for t in tabs.iter().filter(|t| t.id != from) {
+                        let _ = t.view.evaluate_script(&format!("window.__chromeState && window.__chromeState({new}, {})", lastfm::status()));
+                    }
+                } else if let Some(url) = body.strip_prefix("open:") {
+                    // links meant for the browser
+                    if url.starts_with("https://") {
+                        let _ = open_url(url);
+                    }
+                } else if let Some(req) = body.strip_prefix("download:") {
+                    // the download buttons chrome.js puts under tracks, albums and playlists
+                    if let Ok(req) = serde_json::from_str(req) {
+                        dls.start(&req);
+                    }
+                } else if let Some(cmd) = body.strip_prefix("downloads:") {
+                    let mut parts = cmd.split(':');
+                    let (what, id, track) = (parts.next().unwrap_or(""), parts.next().and_then(|n| n.parse().ok()), parts.next().and_then(|n| n.parse().ok()));
+                    match (what, id) {
+                        ("cancel", Some(id)) => dls.cancel(id),
+                        ("show", Some(id)) => {
+                            if let Some(file) = dls.file(id, track) {
+                                downloads::reveal(&file, true);
+                            }
+                        }
+                        ("open-folder", _) => downloads::reveal(&downloads::folder(), false),
+                        ("clear", _) => dls.clear(),
+                        ("get", _) => reply(format!("window.__downloads && window.__downloads({})", dls.list())),
+                        _ => {}
+                    }
+                } else if let Some(me) = body.strip_prefix("account:me:") {
+                    if let Ok(me) = serde_json::from_str(me) {
+                        accounts::set_me(&data_dir(), &me);
+                    }
+                } else if let Some(id) = body.strip_prefix("account:switch:") {
+                    if id != accounts::current(&data_dir()) {
+                        accounts::switch(&data_dir(), id);
+                        let _ = proxy.send_event(Ev::Relaunch);
+                    }
+                } else if body == "account:add" {
+                    accounts::add(&data_dir());
+                    let _ = proxy.send_event(Ev::Relaunch);
+                } else if let Some(id) = body.strip_prefix("account:remove:") {
+                    if let Some(id) = accounts::remove(&data_dir(), id) {
+                        let _ = proxy.send_event(Ev::RemoveStore(id));
+                    }
+                } else if body == "chrome:ready" {
+                    // chrome.js after a load: the settings saved since the launch, and the tabs
+                    reply(format!("window.__chromeState && window.__chromeState({}, {})", load_settings(), lastfm::status()));
+                    send_tabs(&tabs);
+                } else if body == "reload" {
+                    // signed in or out in an embedded SoundCloud page: start over with that session
+                    let _ = proxy.send_event(Ev::LoadTab(from, HOME.into()));
+                } else if body == "drag" {
+                    let _ = window.drag_window();
+                } else if body == "zoom" {
+                    window.set_maximized(!window.is_maximized());
+                } else if body == "minimize" {
+                    window.set_minimized(true);
+                } else if body == "close" {
+                    close(&window, flow);
+                } else if body == "frameless" {
+                    // The page sends this once it draws its own window buttons, so the
+                    // window is never left without a way to close it. macOS keeps its
+                    // traffic lights over the page (see the window builder).
+                    #[cfg(target_os = "windows")]
+                    {
+                        use tao::platform::windows::WindowExtWindows;
+                        window.set_decorations(false);
+                        window.set_undecorated_shadow(true);
+                    }
+                } else if let Some(dir) = body.strip_prefix("resize:").and_then(resize_direction) {
+                    let _ = window.drag_resize_window(dir);
+                // --- tabs: new (Ctrl+T, +), open in the background (middle-click),
+                // close, switch, cycle (Ctrl+Tab), by number (Ctrl+1..9), and each
+                // page's title and address for the others' bars
+                } else if body == "tab:new" {
+                    let _ = proxy.send_event(Ev::NewTab(HOME.into(), true));
+                } else if let Some(url) = body.strip_prefix("tab:open:") {
+                    let _ = proxy.send_event(Ev::NewTab(url.into(), false));
+                } else if let Some(info) = body.strip_prefix("tab:info:") {
+                    if let (Ok(info), Some(t)) = (serde_json::from_str(info), tabs.iter_mut().find(|t| t.id == from)) {
+                        t.info = info;
+                        send_tabs(&tabs);
+                    }
+                } else if let Some(which) = body.strip_prefix("tab:close") {
+                    let id = which.strip_prefix(':').and_then(|n| n.parse().ok()).unwrap_or(from);
+                    let Some(i) = tabs.iter().position(|t| t.id == id) else { return };
+                    // the last tab is the window
+                    if tabs.len() == 1 {
+                        return close(&window, flow);
+                    }
+                    tabs.remove(i); // dropping the webview closes its page
+                    if id == active {
+                        active = tabs[i.min(tabs.len() - 1)].id;
+                        activate(&tabs, active, &window);
+                    }
+                    send_tabs(&tabs);
+                } else if let Some(id) = body.strip_prefix("tab:switch:").and_then(|n| n.parse().ok()) {
+                    if tabs.iter().any(|t| t.id == id) {
+                        active = id;
+                        activate(&tabs, active, &window);
+                    }
+                } else if let Some(step) = body.strip_prefix("tab:cycle:").and_then(|n| n.parse::<i64>().ok()) {
+                    let n = tabs.len() as i64;
+                    if let Some(i) = tabs.iter().position(|t| t.id == active) {
+                        active = tabs[(i as i64 + step).rem_euclid(n) as usize].id;
+                        activate(&tabs, active, &window);
+                    }
+                } else if let Some(n) = body.strip_prefix("tab:index:").and_then(|n| n.parse::<usize>().ok()) {
+                    // 9 is the last tab, as in browsers
+                    let i = if n >= 9 { tabs.len() - 1 } else { n.saturating_sub(1) };
+                    if let Some(t) = tabs.get(i) {
+                        active = t.id;
+                        activate(&tabs, active, &window);
+                    }
+                } else {
+                    println!("[page] {body}");
+                }
+                if let Some(t) = tabs.iter().find(|t| t.id == active) {
+                    window.set_title(t.info["title"].as_str().unwrap_or("SoundCloud (Rust)"));
+                }
+            }
+            // Child webviews don't follow the window by themselves; also so the
+            // page can swap its maximize and restore icons.
+            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
+                for t in &tabs {
+                    let _ = t.view.set_bounds(tab_bounds(&window, t.id == active));
+                    let _ = t.view.evaluate_script(&format!("window.__windowState && window.__windowState({{ maximized: {} }})", window.is_maximized()));
+                }
             }
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => close(&window, flow),
             _ => {}
         }
     });
+}
+
+/// The whole window for the shown tab; the same size just left of it for the others.
+fn tab_bounds(window: &tao::window::Window, shown: bool) -> wry::Rect {
+    let size = window.inner_size();
+    let x = if shown { 0 } else { -(size.width as i32) - 64 };
+    wry::Rect { position: wry::dpi::PhysicalPosition::new(x, 0).into(), size: wry::dpi::PhysicalSize::new(size.width, size.height).into() }
+}
+
+/// A tab's webview over the whole window, with the page scripts and handlers
+/// every tab has; its IPC messages go to the event loop tagged with its id.
+fn build_tab(
+    id: u32,
+    window: &tao::window::Window,
+    proxy: &tao::event_loop::EventLoopProxy<Ev>,
+    custom: bool,
+    trace: bool,
+    #[allow(unused_variables)] context: &mut Ctx,
+) -> wry::Result<wry::WebView> {
+    // fixes.js works around WebKit bugs only.
+    #[cfg(target_os = "macos")]
+    let builder = WebViewBuilder::new().with_user_agent(safari_ua()).with_initialization_script(include_str!("fixes.js"));
+    // an extra account signs in inside its own data store (macOS 14+)
+    #[cfg(target_os = "macos")]
+    let builder = match accounts::store_id(&accounts::current(&data_dir())) {
+        Some(id) => wry::WebViewBuilderExtDarwin::with_data_store_identifier(builder, id),
+        None => builder,
+    };
+    // Overlay scrollbars like macOS, instead of Windows' classic ones beside
+    // every scrolling box (menus, queue, the page).
+    // SoundCloud refuses WebView2's Widevine licence requests (403) but serves
+    // PlayReady ones, so the page is told Widevine isn't there.
+    #[cfg(target_os = "windows")]
+    let builder = {
+        use wry::{ScrollBarStyle, WebViewBuilderExtWindows};
+        WebViewBuilder::new_with_web_context(context).with_scroll_bar_style(ScrollBarStyle::FluentOverlay).with_initialization_script(
+            "(() => { const r = navigator.requestMediaKeySystemAccess?.bind(navigator); if (r) navigator.requestMediaKeySystemAccess = (ks, c) => /widevine/i.test(ks) ? Promise.reject(new DOMException('Unsupported keySystem or supportedConfigurations.', 'NotSupportedError')) : r(ks, c); })();",
+        )
+    };
+    let (dl, nw, ipc) = (proxy.clone(), proxy.clone(), proxy.clone());
+    let mut builder = builder
+        .with_bounds(tab_bounds(window, false))
+        .with_initialization_script_for_main_only(include_str!("clean.js"), false)
+        .with_initialization_script(include_str!("nowplaying.js"))
+        // SoundCloud's track page downloads by sending its frame to the file on
+        // their CDN and relying on the attachment header. WebKit plays audio it
+        // can show instead, so take those navigations and save the file.
+        .with_navigation_handler(move |url| {
+            let host = url.strip_prefix("https://").and_then(|r| r.split(['/', '?', '#']).next()).unwrap_or("");
+            if !host.ends_with(".sndcdn.com") {
+                return true;
+            }
+            let proxy = dl.clone();
+            download(url, move |msg| {
+                let _ = proxy.send_event(Ev::Js(format!("window.__downloadStatus && window.__downloadStatus({})", serde_json::Value::from(msg))));
+            });
+            false
+        })
+        // New windows: SoundCloud pages open as a tab, other sites in the
+        // browser; sign-in popups stay, they post the result back to this page.
+        .with_new_window_req_handler(move |url, _| {
+            let host = url.split_once("://").map(|(_, r)| r.split(['/', '?', '#', ':']).next().unwrap_or("")).unwrap_or("");
+            const SIGN_IN: [&str; 4] = ["secure.soundcloud.com", "accounts.google.com", "appleid.apple.com", "www.facebook.com"];
+            if !url.starts_with("http") || SIGN_IN.contains(&host) {
+                return wry::NewWindowResponse::Allow;
+            }
+            if soundcloud_url(&url) {
+                let _ = nw.send_event(Ev::NewTab(url, true));
+            } else {
+                let _ = open_url(&url);
+            }
+            wry::NewWindowResponse::Deny
+        })
+        .with_ipc_handler(move |req| {
+            let _ = ipc.send_event(Ev::Ipc(id, req.body().clone()));
+        })
+        .with_devtools(true)
+        .with_autoplay(true);
+    if !custom {
+        // our title bar and settings over soundcloud.com, with the saved settings
+        let state = format!(
+            "window.__tabId = {id}; window.__settings = {}; window.__lastfm = {}; window.__appVersion = '{}'; window.__accounts = {}; window.__oledCss = {};",
+            load_settings(),
+            lastfm::status(),
+            env!("CARGO_PKG_VERSION"),
+            accounts::load(&data_dir()),
+            serde_json::Value::from(include_str!("../../../themes/OLED.css"))
+        );
+        builder = builder.with_initialization_script_for_main_only(state, true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
+    }
+    if trace {
+        builder = builder.with_initialization_script(include_str!("trace.js"));
+    }
+    builder.build_as_child(window)
 }
 
 /// "resize:<edge>" from the page's frameless-window edges: n, s, e, w, ne, nw, se, sw.
@@ -687,7 +865,7 @@ fn styles_path() -> std::path::PathBuf {
 
 // The settings panel's choices; anything missing falls back to the default.
 fn load_settings() -> serde_json::Value {
-    let mut s = serde_json::json!({ "navButtons": true, "minimizeToTray": true, "autoUpdate": true, "theme": "dark", "discord": true, "adblock": true, "lastfm": false });
+    let mut s = serde_json::json!({ "navButtons": true, "downloadButton": true, "downloadUseAccount": true, "minimizeToTray": true, "autoUpdate": true, "theme": "dark", "discord": true, "adblock": true, "lastfm": false });
     if let Some(saved) = std::fs::read_to_string(data_dir().join("settings.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
@@ -736,7 +914,7 @@ fn app_menu() -> muda::Menu {
         &[&P::undo(None), &P::redo(None), &sep(), &P::cut(None), &P::copy(None), &P::paste(None), &P::select_all(None)],
     )
     .unwrap();
-    let window = Submenu::with_items("Window", true, &[&P::minimize(None), &P::maximize(None), &P::fullscreen(None), &sep(), &P::close_window(None)]).unwrap();
+    let window = Submenu::with_items("Window", true, &[&P::minimize(None), &P::maximize(None), &P::fullscreen(None), ]).unwrap();
     menu.append_items(&[&app, &edit, &window]).unwrap();
     menu.init_for_nsapp();
     menu

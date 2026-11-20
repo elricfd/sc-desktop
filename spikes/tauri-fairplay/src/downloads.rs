@@ -94,8 +94,13 @@ fn home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default())
 }
 
+/// A download setting from the settings panel; empty means the default.
+fn setting(key: &str) -> Option<String> {
+    crate::load_settings()[key].as_str().map(str::trim).filter(|s| !s.is_empty()).map(String::from)
+}
+
 pub fn folder() -> PathBuf {
-    home().join("Downloads")
+    setting("downloadFolder").map(PathBuf::from).unwrap_or_else(|| home().join("Downloads"))
 }
 
 // A GUI app gets a bare PATH on macOS, so the usual install places are added;
@@ -135,7 +140,8 @@ fn args(url: &str, is_set: bool, auth: bool, items: &[usize], tags: bool) -> Vec
     if tags {
         a.extend(["--embed-thumbnail", "--embed-metadata"].map(String::from));
     }
-    let out = if is_set { format!("{SET_FOLDER}/{TEMPLATE}") } else { TEMPLATE.into() };
+    let template = setting("downloadTemplate").unwrap_or(TEMPLATE.into());
+    let out = if is_set { format!("{}/{template}", setting("downloadPlaylistFolder").unwrap_or(SET_FOLDER.into())) } else { template };
     a.extend(["--newline", "--progress", "--progress-template", &progress, "--print", &file, "-f", FORMAT, "-P"].map(String::from));
     a.push(folder().to_string_lossy().into_owned());
     a.extend(["-o".into(), out, "--".into(), url.into()]);
@@ -379,6 +385,9 @@ impl Downloads {
             } else if let Some(json) = line.strip_prefix(FILE) {
                 let Ok(f) = serde_json::from_str::<Value>(json) else { continue };
                 self.with(id, |i| {
+                    if i.status == "cancelled" {
+                        return;
+                    }
                     let n = f["index"].as_u64().unwrap_or(1) as usize;
                     while i.tracks.len() < n {
                         let k = i.tracks.len() + 1;
@@ -412,7 +421,7 @@ impl Downloads {
             if matches!(i.status, "queued" | "downloading" | "processing") {
                 i.status = "cancelled";
                 if let Some(c) = &i.child {
-                    let _ = c.lock().unwrap().kill();
+                    kill_tree(&mut c.lock().unwrap());
                 }
             }
         });
@@ -445,6 +454,17 @@ impl Downloads {
         let st = self.0.lock().unwrap();
         Value::Array(st.items.iter().map(Item::json).collect()).to_string()
     }
+}
+
+/// Stops yt-dlp and what it started. On Windows yt-dlp.exe is a launcher
+/// whose own child does the download (and runs ffmpeg), so kill the tree.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill").args(["/T", "/F", "/PID", &child.id().to_string()]).creation_flags(0x0800_0000).status();
+    }
+    let _ = child.kill();
 }
 
 /// Shows a file in Finder / Explorer, or opens a folder.

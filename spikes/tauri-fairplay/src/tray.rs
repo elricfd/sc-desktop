@@ -51,11 +51,10 @@ pub fn build(send: impl Fn(Action) + Send + Sync + 'static) -> TrayIcon {
         tray_icon::Icon::from_rgba(rgba, w, h).unwrap()
     };
     let builder = TrayIconBuilder::new().with_tooltip("SoundCloud").with_menu(Box::new(menu)).with_menu_on_left_click(cfg!(target_os = "macos"));
-    let builder = if cfg!(target_os = "macos") {
-        builder.with_icon_templated(icon(include_bytes!("icons/tray-template.png")))
-    } else {
-        builder.with_icon(icon(include_bytes!("icons/tray-color.png")))
-    };
+    #[cfg(target_os = "macos")]
+    let builder = builder.with_icon_templated(icon(include_bytes!("icons/tray-template.png")));
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.with_icon(icon(include_bytes!("icons/tray-color.png")));
     builder.build().unwrap()
 }
 
