@@ -1,7 +1,7 @@
 #!/bin/zsh
-# Builds "SoundCloud Rust.app" (macOS; named apart from the Electron app's
-# SoundCloud.app), signed with the Apple Development identity, and its update
-# zip in target/release/bundle. With --publish it also makes the
+# Builds SoundCloud.app (macOS; it replaces the Electron app of the same name),
+# signed with the Apple Development identity, and its update zip in
+# target/release/bundle. With --publish it also makes the
 # GitHub release the updater reads (src/updater.rs): tag rust-v<version>,
 # a pre-release, never "latest", so the Electron app's updater ignores it.
 # Bump `version` in Cargo.toml first.
@@ -11,7 +11,7 @@ cd "${0:A:h}"
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 arch=$(uname -m | sed 's/arm64/aarch64/')
 out=target/release/bundle
-app="$out/SoundCloud Rust.app"
+app="$out/SoundCloud.app"
 zip=$out/soundcloud-rust-$version-macos-$arch.zip
 
 cargo build --release

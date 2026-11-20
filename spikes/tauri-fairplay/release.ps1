@@ -26,11 +26,11 @@ if ($Install) {
     Get-Process fairplay-spike -ErrorAction SilentlyContinue | Where-Object Path -eq "$dir\fairplay-spike.exe" | Stop-Process
     Copy-Item target\release\fairplay-spike.exe "$dir\fairplay-spike.exe" -Force
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoundCloud (Rust).lnk")
+    $link = $shell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\SoundCloud.lnk")
     $link.TargetPath = "$dir\fairplay-spike.exe"
     $link.WorkingDirectory = $dir
     $link.Save()
-    "installed $dir\fairplay-spike.exe, Start menu: SoundCloud (Rust)"
+    "installed $dir\fairplay-spike.exe, Start menu: SoundCloud"
 }
 
 if ($Publish) {

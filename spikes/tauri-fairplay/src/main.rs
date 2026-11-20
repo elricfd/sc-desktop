@@ -127,7 +127,7 @@ fn main() -> wry::Result<()> {
 
     #[allow(unused_mut)]
     let mut window = WindowBuilder::new()
-        .with_title("SoundCloud (Rust)")
+        .with_title("SoundCloud")
         .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
         // SoundCloud's page is laid out for 960 and still holds together at 800
         // (its right column partly cut off); narrower falls apart
@@ -511,7 +511,7 @@ fn main() -> wry::Result<()> {
                     println!("[page] {body}");
                 }
                 if let Some(t) = tabs.iter().find(|t| t.id == active) {
-                    window.set_title(t.info["title"].as_str().unwrap_or("SoundCloud (Rust)"));
+                    window.set_title(t.info["title"].as_str().unwrap_or("SoundCloud"));
                 }
             }
             // Child webviews don't follow the window by themselves; also so the
