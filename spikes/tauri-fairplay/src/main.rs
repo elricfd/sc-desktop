@@ -129,6 +129,9 @@ fn main() -> wry::Result<()> {
     let mut window = WindowBuilder::new()
         .with_title("SoundCloud (Rust)")
         .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
+        // SoundCloud's page is laid out for 960 and still holds together at 800
+        // (its right column partly cut off); narrower falls apart
+        .with_min_inner_size(tao::dpi::LogicalSize::new(800.0, 600.0))
         // shown once the first page has drawn (Ev::ShowTab), not as a blank window
         .with_visible(false);
     // Windows starts with the native frame and drops it once the page has drawn

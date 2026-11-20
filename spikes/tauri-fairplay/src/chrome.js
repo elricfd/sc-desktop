@@ -158,8 +158,17 @@
     /* Windows (Electron header's platform-win32 layout): no traffic lights;
        window buttons at the far right of a frameless window, resized from its edges. */
     .pocTitlebar .window-controls, .pocEdge { display: none; }
-    html.platform-win .pocTitlebar { grid-template-columns: auto minmax(0, auto) minmax(min-content, 1fr); }
     html.platform-win .pocTitlebar .header-side:first-child { padding-left: 8px; }
+    /* a row, not the centred grid: when narrow, the search box gives way first, then the tab */
+    html.platform-win .pocTitlebar { display: flex; }
+    html.platform-win .pocTitlebar .header-side:first-child { flex: none; }
+    html.platform-win .pocTitlebar .header-center { flex: 0 1 auto; }
+    html.platform-win .pocTitlebar .header-side:last-child { flex: 1 6 auto; min-width: min-content; }
+    html.platform-win .pocTitlebar .nav-button { flex: none; }
+    html.platform-win .pocTitlebar .pocSearch { width: auto; }
+    html.platform-win .pocTitlebar .pocSearch input { width: 100%; min-width: 0; }
+    html.platform-win .pocTitlebar .tab-group { overflow: hidden; }
+    html.platform-win .pocTitlebar .tab.active { min-width: 90px; }
     html.platform-win .pocTitlebar .header-side:first-child .title-bar { flex: 0 0 8px; min-width: 8px; }
     html.platform-win .pocTitlebar .header-side:last-child { padding-right: 0; }
     html.platform-win .pocTitlebar .window-controls { display: flex; align-self: stretch; margin-left: 4px; }
