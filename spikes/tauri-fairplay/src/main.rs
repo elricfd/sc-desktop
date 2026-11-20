@@ -144,8 +144,10 @@ fn main() -> wry::Result<()> {
         window = window
             .with_titlebar_transparent(true)
             .with_title_hidden(true)
-            .with_fullsize_content_view(true)
-            .with_traffic_light_inset(tao::dpi::LogicalPosition::new(12.0, 10.0));
+            .with_fullsize_content_view(true);
+        // The traffic lights stay where macOS puts them, which on current macOS
+        // is centred on our 32px bar. Moving them (tao's inset, or by hand) made
+        // AppKit move them back during resizes and when a tab's webview was added.
     }
     #[cfg(target_os = "windows")]
     {
@@ -219,15 +221,6 @@ fn main() -> wry::Result<()> {
         window.set_minimized(false);
         window.set_focus();
     };
-    // The traffic lights' inset (see the window builder): tao applies it when
-    // its own view draws, which the tabs' webviews now cover, so we place them
-    // ourselves, after every batch of events (AppKit puts them back at times).
-    let lights = |window: &tao::window::Window| {
-        #[cfg(target_os = "macos")]
-        place_traffic_lights(window);
-        let _ = window;
-    };
-    lights(&window);
     // every tab's bar lists all of them
     let send_tabs = |tabs: &[Tab]| {
         let state = serde_json::json!({ "tabs": tabs.iter().map(|t| serde_json::json!({ "id": t.id, "info": t.info })).collect::<Vec<_>>() });
@@ -523,7 +516,6 @@ fn main() -> wry::Result<()> {
             }
             // Child webviews don't follow the window by themselves; also so the
             // page can swap its maximize and restore icons.
-            Event::MainEventsCleared => lights(&window),
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
                 for t in &tabs {
                     let _ = t.view.set_bounds(tab_bounds(&window, t.id == active));
@@ -534,37 +526,6 @@ fn main() -> wry::Result<()> {
             _ => {}
         }
     });
-}
-
-/// The close/minimize/zoom buttons 12 points in and centred on our 32-point
-/// bar (tao's with_traffic_light_inset only applies when its view draws).
-#[cfg(target_os = "macos")]
-fn place_traffic_lights(window: &tao::window::Window) {
-    use objc2_app_kit::{NSWindow, NSWindowButton};
-    use tao::platform::macos::WindowExtMacOS;
-    const BAR: f64 = 32.0; // chrome.js's title bar
-    let x = 12.0;
-    let ns: &NSWindow = unsafe { &*(window.ns_window() as *const NSWindow) };
-    let (Some(close), Some(mini), Some(zoom)) = (
-        ns.standardWindowButton(NSWindowButton::CloseButton),
-        ns.standardWindowButton(NSWindowButton::MiniaturizeButton),
-        ns.standardWindowButton(NSWindowButton::ZoomButton),
-    ) else {
-        return;
-    };
-    let Some(bar) = (unsafe { close.superview() }).and_then(|v| unsafe { v.superview() }) else { return };
-    let first = close.frame();
-    let mut frame = bar.frame();
-    frame.size.height = BAR;
-    frame.origin.y = ns.frame().size.height - BAR;
-    bar.setFrame(frame);
-    let step = mini.frame().origin.x - first.origin.x;
-    for (i, button) in [close, mini, zoom].iter().enumerate() {
-        let mut origin = button.frame().origin;
-        origin.x = x + i as f64 * step;
-        origin.y = (BAR - first.size.height) / 2.0;
-        button.setFrameOrigin(origin);
-    }
 }
 
 /// The whole window for the shown tab; the same size just left of it for the others.
