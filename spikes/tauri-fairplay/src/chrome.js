@@ -14,6 +14,10 @@
   let state = [window.__settings || {}, window.__lastfm || { connected: false }];
   window.__chromeState = (...s) => { state = s; };
   post('chrome:ready');
+  // A new tab stays off the window until SoundCloud's content has rendered;
+  // this says when (Rust shows it after 5 s regardless).
+  const drawn = (n = 0) => { const c = document.getElementById('content'); if (c && c.offsetHeight > 400) post('tab:drawn'); else if (n < 50) setTimeout(drawn, 100, n + 1); };
+  drawn();
 
   const css = `
     /* ---- SoundCloud under our bar: in-flow content via the body's padding,

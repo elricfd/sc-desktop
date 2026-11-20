@@ -54,6 +54,8 @@ enum Ev {
     Ipc(u32, String),
     // open a tab (shown or in the background), load one once its ad rules are in
     NewTab(String, bool),
+    // a new tab that has drawn its page (or waited long enough) comes on
+    ShowTab(u32),
     LoadTab(u32, String),
     Tray(tray::Action),
     // account switcher: start again on another account, drop an old one's store
@@ -126,7 +128,9 @@ fn main() -> wry::Result<()> {
     #[allow(unused_mut)]
     let mut window = WindowBuilder::new()
         .with_title("SoundCloud (Rust)")
-        .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0));
+        .with_inner_size(tao::dpi::LogicalSize::new(1200.0, 800.0))
+        // shown once the first page has drawn (Ev::ShowTab), not as a blank window
+        .with_visible(false);
     // Windows starts with the native frame and drops it once the page has drawn
     // its own window buttons ("frameless").
     #[cfg(target_os = "macos")]
@@ -174,6 +178,8 @@ fn main() -> wry::Result<()> {
     let mut context: Ctx = ();
     let mut tabs: Vec<Tab> = Vec::new();
     let mut active = 0u32;
+    let mut pending: Option<u32>; // a new tab (or the first page) waiting to come on
+    let mut window_shown = false; // the window starts hidden
     let mut next_id = 0u32;
     // Rules first, then the page, so its first requests are filtered too.
     let tab_proxy = proxy.clone();
@@ -188,6 +194,12 @@ fn main() -> wry::Result<()> {
     };
     tabs.push(open_tab(next_id, url, &window, &mut context)?);
     let _ = tabs[0].view.set_bounds(tab_bounds(&window, true));
+    pending = Some(next_id);
+    let p = proxy.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let _ = p.send_event(Ev::ShowTab(0));
+    });
     next_id += 1;
 
     // Closing hides the window when "Minimize to tray" is on (the default, as
@@ -204,6 +216,15 @@ fn main() -> wry::Result<()> {
         window.set_minimized(false);
         window.set_focus();
     };
+    // The traffic lights' inset (see the window builder): tao applies it when
+    // its own view draws, which the tabs' webviews now cover, so we place them
+    // ourselves, after every batch of events (AppKit puts them back at times).
+    let lights = |window: &tao::window::Window| {
+        #[cfg(target_os = "macos")]
+        place_traffic_lights(window);
+        let _ = window;
+    };
+    lights(&window);
     // every tab's bar lists all of them
     let send_tabs = |tabs: &[Tab]| {
         let state = serde_json::json!({ "tabs": tabs.iter().map(|t| serde_json::json!({ "id": t.id, "info": t.info })).collect::<Vec<_>>() });
@@ -289,6 +310,20 @@ fn main() -> wry::Result<()> {
                     }
                 }
             }
+            Event::UserEvent(Ev::ShowTab(id)) => {
+                if !window_shown {
+                    window_shown = true;
+                    window.set_visible(true);
+                    window.set_focus();
+                }
+                if pending == Some(id) && tabs.iter().any(|t| t.id == id) {
+                    active = id;
+                    activate(&tabs, active, &window);
+                }
+                if pending == Some(id) {
+                    pending = None;
+                }
+            }
             Event::UserEvent(Ev::NewTab(url, focus)) => {
                 if custom || !soundcloud_url(&url) {
                     return;
@@ -298,8 +333,16 @@ fn main() -> wry::Result<()> {
                         // right after the shown tab, as browsers place them
                         let at = tabs.iter().position(|t| t.id == active).map_or(tabs.len(), |i| i + 1);
                         tabs.insert(at, tab);
+                        // It stays just off the window until SoundCloud's content
+                        // has rendered (tab:drawn from chrome.js), or the window
+                        // shows an empty page for a moment; after 5 s regardless.
                         if focus {
-                            active = next_id;
+                            pending = Some(next_id);
+                            let (p, id) = (proxy.clone(), next_id);
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_secs(5));
+                                let _ = p.send_event(Ev::ShowTab(id));
+                            });
                         }
                         next_id += 1;
                         activate(&tabs, active, &window);
@@ -393,9 +436,12 @@ fn main() -> wry::Result<()> {
                     if let Some(id) = accounts::remove(&data_dir(), id) {
                         let _ = proxy.send_event(Ev::RemoveStore(id));
                     }
+                } else if body == "tab:drawn" {
+                    let _ = proxy.send_event(Ev::ShowTab(from));
                 } else if body == "chrome:ready" {
                     // chrome.js after a load: the settings saved since the launch, and the tabs
                     reply(format!("window.__chromeState && window.__chromeState({}, {})", load_settings(), lastfm::status()));
+
                     send_tabs(&tabs);
                 } else if body == "reload" {
                     // signed in or out in an embedded SoundCloud page: start over with that session
@@ -448,6 +494,7 @@ fn main() -> wry::Result<()> {
                 } else if let Some(id) = body.strip_prefix("tab:switch:").and_then(|n| n.parse().ok()) {
                     if tabs.iter().any(|t| t.id == id) {
                         active = id;
+                        pending = None;
                         activate(&tabs, active, &window);
                     }
                 } else if let Some(step) = body.strip_prefix("tab:cycle:").and_then(|n| n.parse::<i64>().ok()) {
@@ -472,6 +519,7 @@ fn main() -> wry::Result<()> {
             }
             // Child webviews don't follow the window by themselves; also so the
             // page can swap its maximize and restore icons.
+            Event::MainEventsCleared => lights(&window),
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
                 for t in &tabs {
                     let _ = t.view.set_bounds(tab_bounds(&window, t.id == active));
@@ -485,6 +533,37 @@ fn main() -> wry::Result<()> {
 }
 
 /// The whole window for the shown tab; the same size just left of it for the others.
+/// The close/minimize/zoom buttons 12 points in and centred on our 32-point
+/// bar (tao's with_traffic_light_inset only applies when its view draws).
+#[cfg(target_os = "macos")]
+fn place_traffic_lights(window: &tao::window::Window) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+    use tao::platform::macos::WindowExtMacOS;
+    const BAR: f64 = 32.0; // chrome.js's title bar
+    let x = 12.0;
+    let ns: &NSWindow = unsafe { &*(window.ns_window() as *const NSWindow) };
+    let (Some(close), Some(mini), Some(zoom)) = (
+        ns.standardWindowButton(NSWindowButton::CloseButton),
+        ns.standardWindowButton(NSWindowButton::MiniaturizeButton),
+        ns.standardWindowButton(NSWindowButton::ZoomButton),
+    ) else {
+        return;
+    };
+    let Some(bar) = (unsafe { close.superview() }).and_then(|v| unsafe { v.superview() }) else { return };
+    let first = close.frame();
+    let mut frame = bar.frame();
+    frame.size.height = BAR;
+    frame.origin.y = ns.frame().size.height - BAR;
+    bar.setFrame(frame);
+    let step = mini.frame().origin.x - first.origin.x;
+    for (i, button) in [close, mini, zoom].iter().enumerate() {
+        let mut origin = button.frame().origin;
+        origin.x = x + i as f64 * step;
+        origin.y = (BAR - first.size.height) / 2.0;
+        button.setFrameOrigin(origin);
+    }
+}
+
 fn tab_bounds(window: &tao::window::Window, shown: bool) -> wry::Rect {
     let size = window.inner_size();
     let x = if shown { 0 } else { -(size.width as i32) - 64 };
