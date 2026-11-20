@@ -441,7 +441,6 @@ fn main() -> wry::Result<()> {
                 } else if body == "chrome:ready" {
                     // chrome.js after a load: the settings saved since the launch, and the tabs
                     reply(format!("window.__chromeState && window.__chromeState({}, {})", load_settings(), lastfm::status()));
-
                     send_tabs(&tabs);
                 } else if body == "reload" {
                     // signed in or out in an embedded SoundCloud page: start over with that session
@@ -485,11 +484,13 @@ fn main() -> wry::Result<()> {
                     if tabs.len() == 1 {
                         return close(&window, flow);
                     }
-                    tabs.remove(i); // dropping the webview closes its page
+                    // the next tab (or the one before) comes on before this one
+                    // goes, or the empty window flashes in between
                     if id == active {
-                        active = tabs[i.min(tabs.len() - 1)].id;
+                        active = tabs[if i + 1 < tabs.len() { i + 1 } else { i - 1 }].id;
                         activate(&tabs, active, &window);
                     }
+                    tabs.remove(i); // dropping the webview closes its page
                     send_tabs(&tabs);
                 } else if let Some(id) = body.strip_prefix("tab:switch:").and_then(|n| n.parse().ok()) {
                     if tabs.iter().any(|t| t.id == id) {
@@ -532,7 +533,6 @@ fn main() -> wry::Result<()> {
     });
 }
 
-/// The whole window for the shown tab; the same size just left of it for the others.
 /// The close/minimize/zoom buttons 12 points in and centred on our 32-point
 /// bar (tao's with_traffic_light_inset only applies when its view draws).
 #[cfg(target_os = "macos")]
@@ -564,6 +564,7 @@ fn place_traffic_lights(window: &tao::window::Window) {
     }
 }
 
+/// The whole window for the shown tab; the same size just left of it for the others.
 fn tab_bounds(window: &tao::window::Window, shown: bool) -> wry::Rect {
     let size = window.inner_size();
     let x = if shown { 0 } else { -(size.width as i32) - 64 };

@@ -44,7 +44,12 @@ ditto -c -k --keepParent "$app" "$zip"
 echo "built $app and $zip"
 
 if [[ ${1:-} == --publish ]]; then
-  gh release create "rust-v$version" "$zip" -R elricfd/sc-desktop --target rust-client \
-    --prerelease --latest=false --title "Rust client $version" \
-    --notes "macOS build of the Rust client (spikes/tauri-fairplay). Installed copies update themselves."
+  # release.ps1 may have made the release already with the Windows zip
+  if gh release view "rust-v$version" -R elricfd/sc-desktop >/dev/null 2>&1; then
+    gh release upload "rust-v$version" "$zip" -R elricfd/sc-desktop --clobber
+  else
+    gh release create "rust-v$version" "$zip" -R elricfd/sc-desktop --target rust-client \
+      --prerelease --latest=false --title "Rust client $version" \
+      --notes "Builds of the Rust client (spikes/tauri-fairplay). Installed copies update themselves."
+  fi
 fi
