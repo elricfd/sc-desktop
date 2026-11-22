@@ -704,10 +704,14 @@ fn build_tab(
         })
         // New windows: SoundCloud pages open as a tab, other sites in the
         // browser; sign-in popups stay, they post the result back to this page.
-        .with_new_window_req_handler(move |url, _| {
+        .with_new_window_req_handler(move |url, #[allow(unused_variables)] features| {
             let host = url.split_once("://").map(|(_, r)| r.split(['/', '?', '#', ':']).next().unwrap_or("")).unwrap_or("");
             const SIGN_IN: [&str; 4] = ["secure.soundcloud.com", "accounts.google.com", "appleid.apple.com", "www.facebook.com"];
             if !url.starts_with("http") || SIGN_IN.contains(&host) {
+                // wry's own popup window on Linux has no size (GTK's minimum) and the opening URL as its title
+                #[cfg(target_os = "linux")]
+                return sign_in_popup(&features.opener.webview);
+                #[cfg(not(target_os = "linux"))]
                 return wry::NewWindowResponse::Allow;
             }
             if soundcloud_url(&url) {
@@ -813,6 +817,42 @@ fn browser_tab(id: u32, bin: &std::path::Path, proxy: &tao::event_loop::EventLoo
     Ok(View::Browser(page))
 }
 
+/// A sign-in popup (Google, Apple, Facebook) in a window of its own: the size
+/// the page asks for (else 520x700), over the app, titled by its page, and
+/// gone when the page closes it after signing in.
+#[cfg(target_os = "linux")]
+fn sign_in_popup(opener: &webkit2gtk::WebView) -> wry::NewWindowResponse {
+    use gtk::prelude::*;
+    use webkit2gtk::{WebViewExt, WindowPropertiesExt};
+    let view = webkit2gtk::WebView::with_related_view(opener);
+    let window = gtk::Window::new(gtk::WindowType::Toplevel);
+    window.set_default_size(520, 700);
+    window.set_title("Sign in");
+    if let Some(parent) = opener.toplevel().and_then(|w| w.downcast::<gtk::Window>().ok()) {
+        window.set_transient_for(Some(&parent));
+        window.set_position(gtk::WindowPosition::CenterOnParent);
+    }
+    window.add(&view);
+    let w = window.clone();
+    view.connect_ready_to_show(move |v| {
+        if let Some(geometry) = v.window_properties().map(|p| p.geometry()) {
+            if geometry.width() > 0 && geometry.height() > 0 {
+                w.resize(geometry.width().max(420), geometry.height().max(560));
+            }
+        }
+        w.show_all();
+    });
+    let w = window.clone();
+    view.connect_title_notify(move |v| {
+        if let Some(t) = v.title().filter(|t| !t.is_empty()) {
+            w.set_title(&t);
+        }
+    });
+    let w = window.clone();
+    view.connect_close(move |_| unsafe { w.destroy() });
+    wry::NewWindowResponse::Create { webview: view }
+}
+
 /// "resize:<edge>" from the page's frameless-window edges: n, s, e, w, ne, nw, se, sw.
 fn resize_direction(edge: &str) -> Option<tao::window::ResizeDirection> {
     use tao::window::ResizeDirection::*;
@@ -864,12 +904,16 @@ fn custom_html(settings: &serde_json::Value) -> String {
     let lastfm = lastfm::status().to_string().replace("</script", "<\\/script");
     // clean.js for the page to run in embedded SoundCloud pages (see prepFrame)
     let clean = serde_json::to_string(include_str!("clean.js")).unwrap().replace("</script", "<\\/script");
+    // as chrome.js gets them (chrome_state): accounts, version, the OLED theme
+    let accounts = accounts::load(&data_dir()).to_string().replace("</script", "<\\/script");
+    let oled = serde_json::Value::from(include_str!("../../../themes/OLED.css")).to_string().replace("</script", "<\\/script");
+    let app_version = env!("CARGO_PKG_VERSION");
     include_str!("custom.html")
         .replacen("/*SC_STYLES*/", &css, 1)
         .replacen(
             "<script>/*HLS_JS*/</script>",
             &format!(
-                "<script>window.__scStylesVersion = {version}; window.__scIcons = {icons}; window.__settings = {settings}; window.__lastfm = {lastfm}; window.__cleanJs = {clean};</script><script>{}</script>",
+                "<script>window.__scStylesVersion = {version}; window.__scIcons = {icons}; window.__settings = {settings}; window.__lastfm = {lastfm}; window.__cleanJs = {clean}; window.__accounts = {accounts}; window.__appVersion = '{app_version}'; window.__oledCss = {oled};</script><script>{}</script>",
                 include_str!("../vendor/hls.min.js")
             ),
             1,

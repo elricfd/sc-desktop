@@ -30,9 +30,6 @@
   .pocQueue__meta { min-width: 0; flex: 1; }
   .pocQueue__meta div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .queue__scrollable { overflow-y: auto !important; max-height: 420px; }
-  /* SoundCloud pins its sidebar with a computed top (pinSidebars below): it
-     scrolls with the page until its end shows, then stays. */
-  .l-sidebar-right .streamSidebar, .l-sidebar-right .userSidebar { position: sticky; top: 90px; }
   .artistShortcutTile__button { cursor: pointer; }
   /* Their linked .sc-artwork radius loads after the injected .image__rounded here. */
   .sc-artwork.image__rounded { border-radius: 50%; }
@@ -85,6 +82,90 @@
   .pocTitlebar .pocSearch { display: flex; align-items: center; gap: 6px; width: 198px; height: 22px; margin-right: 8px; padding: 0 8px; border-radius: 6px; background: var(--hover-bg); }
   .pocTitlebar .pocSearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
   .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
+  /* suggestions while typing, as chrome.js draws them */
+  .pocTitlebar .pocSearch { position: relative; }
+  .pocSuggest { display: none; position: absolute; top: 28px; right: 0; z-index: 10003; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 4px 0; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: #1a1a1a; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); font: 13px Söhne, system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: default; }
+  body.theme-light .pocSuggest { border-color: rgba(0, 0, 0, .12); background: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
+  .pocSuggest.open { display: block; }
+  /* WebKitGTK draws a type=search field as its own box, clear button and focus ring: ours is the only box */
+  .pocTitlebar .pocSearch input { -webkit-appearance: none; appearance: none; box-shadow: none; }
+  .pocTitlebar .pocSearch input:focus { outline: none; box-shadow: none; }
+  .pocTitlebar .pocSearch input::-webkit-search-cancel-button, .pocTitlebar .pocSearch input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+  /* A SoundCloud page in a frame stays hidden until it has loaded and taken
+     our theme, instead of flashing white; shown after 3 s regardless. */
+  .pocEmbed:not(.pocReady) { visibility: hidden; animation: pocShow 0s 3s forwards; }
+  @keyframes pocShow { to { visibility: visible; } }
+  body.pocNoDl .pocDownload, body.pocNoDl #dlBtn { display: none !important; }
+  /* playlist page: until the harvested GO+ badge is there, a drawn one */
+  /* the hero's artist label boxed like its title (both are shrinkwrap labels) */
+  .fullHero .soundTitle__username.g-type-shrinkwrap-inline { display: -webkit-inline-box; padding: 4px 8px; }
+  /* the playing row of a playlist, as SoundCloud colours it */
+  .trackItem.active .trackItem__trackTitle, .trackItem.active .trackItem__number { color: #f50 !important; }
+  .pocGoPlus { display: inline-block; padding: 1px 5px; border-radius: 3px; background: linear-gradient(90deg, #ff4d73, #d81b60); color: #fff; font: 700 11px/16px sans-serif; vertical-align: middle; }
+  /* The page's scrollbar would run behind our bar and the player: ours runs between them (as chrome.js). */
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+  .pocScroll { display: none; position: fixed; right: 2px; z-index: 2147482999; width: 8px; border-radius: 4px; background: rgba(255, 255, 255, .3); opacity: 0; transition: opacity .3s; }
+  body.theme-light .pocScroll { background: rgba(0, 0, 0, .3); }
+  .pocScroll.on, .pocScroll:hover, .pocScroll.drag { opacity: 1; transition: none; }
+  .pocTitlebar .window-controls button:focus { outline: none; }
+  /* downloads: as chrome.js draws them */
+  .pocTitlebar .pocDlBtn { position: relative; }
+  .pocTitlebar .pocDlBtn[hidden] { display: none; }
+  .pocDlBadge { position: absolute; top: 0; right: 2px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px; background: #f50; color: #fff; font: 600 9px/13px -apple-system, sans-serif; text-align: center; }
+  .pocDownloads { --dl-bg: #1a1a1a; --dl-line: rgba(255, 255, 255, .1); --dl-hover: rgba(255, 255, 255, .08); position: fixed; top: 36px; right: 8px; z-index: 2147483001; width: min(400px, calc(100vw - 16px)); max-height: min(480px, calc(100vh - 48px)); display: flex; flex-direction: column; border: 1px solid var(--dl-line); border-radius: 10px; background: var(--dl-bg); color: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); font: 13px/1.35 Söhne, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  html.poc-oled .pocDownloads { --dl-bg: #000; }
+  body.theme-light .pocDownloads { --dl-bg: #fff; --dl-line: rgba(0, 0, 0, .12); --dl-hover: rgba(0, 0, 0, .05); color: #222; box-shadow: 0 10px 30px rgba(0, 0, 0, .15); }
+  .pocDownloads[hidden] { display: none; }
+  .pocDownloads header { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 8px 14px; border-bottom: 1px solid var(--dl-line); font-size: 14px; }
+  .pocDownloads button { margin-left: 4px; padding: 3px 8px; border: 1px solid var(--dl-line); border-radius: 6px; background: none; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+  .pocDownloads button:hover { background: var(--dl-hover); }
+  .pocDlList { overflow-y: auto; }
+  .pocDlEmpty { padding: 14px; opacity: .6; font-size: 12px; }
+  .pocDlList:not(:empty) + .pocDlEmpty { display: none; }
+  .pocDlRow { padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--dl-line); }
+  .pocDlHead { display: flex; align-items: center; gap: 6px; }
+  .pocDlHead .pocDlArrow { flex: none; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin: 0 0 0 -6px; padding: 0; border: 0; }
+  .pocDlArrow svg { transition: transform .15s; }
+  .pocDlArrow.open svg { transform: rotate(90deg); }
+  .pocDlTitle { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+  .pocDlDetail { margin-top: 3px; font-size: 12px; opacity: .65; }
+  .pocDlRow progress, .pocDlTrack progress { width: 100%; height: 4px; margin-top: 6px; -webkit-appearance: none; appearance: none; border: 0; border-radius: 2px; background: var(--dl-line); overflow: hidden; }
+  .pocDlRow progress::-webkit-progress-bar { background: var(--dl-line); }
+  .pocDlRow progress::-webkit-progress-value { background: #f50; }
+  .pocDlRow.error .pocDlDetail { color: #ff6b6b; opacity: 1; }
+  .pocDlLow { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 4px; background: rgba(255, 85, 0, .18); color: #ff7a33; font-size: 11px; font-weight: 600; }
+  .pocDlTracks { margin: 8px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--dl-line); }
+  .pocDlTrack { display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; column-gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--dl-line); font-size: 12px; }
+  .pocDlTrack:last-child { border-bottom: 0; }
+  .pocDlTrack .n { opacity: .5; text-align: right; }
+  .pocDlTrack .t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .pocDlTrack .s { opacity: .65; white-space: nowrap; }
+  .pocDlTrack.skipped .s, .pocDlTrack.failed .s { color: #ff6b6b; opacity: .9; }
+  .pocDlTrack.waiting { opacity: .55; }
+  .pocDlTrack progress { grid-column: 2 / 5; margin-top: 3px; }
+  .pocDlTrack .show { margin: 0 0 0 2px; padding: 1px 6px; font-size: 11px; }
+  #me { margin-left: 8px; }
+  .pocAccountRow { display: flex !important; align-items: center; gap: 8px; }
+  .pocSettings .pocAccountsList { margin: 0; padding: 0; list-style: none; }
+  .pocSettings .pocAccountsItem { min-height: 36px; padding: 6px 8px; margin: 0 -8px; border-radius: 6px; color: inherit; text-decoration: none; cursor: pointer; }
+  .pocSettings .pocAccountsItem:hover { background: var(--bg-hover); }
+  .pocAccountAvatar { flex: none; width: 20px; height: 20px; border-radius: 50%; object-fit: cover; background: rgba(128, 128, 128, .3); }
+  .pocAccountPlus { display: flex; align-items: center; justify-content: center; background: none !important; font-size: 18px; line-height: 1; }
+  .pocAccountName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pocAccountCheck { flex: none; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; opacity: .7; }
+  .pocAccountRemove { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 15px; line-height: 1; opacity: .5; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .pocAccountRemove:hover { opacity: 1; background: rgba(128, 128, 128, .2); }
+  .pocAccountRemove.confirm { width: auto; padding: 0 6px; font-size: 12px; opacity: 1; color: #f50; }
+  .pocSuggestHead { padding: 10px 12px 4px; font-weight: 600; line-height: 1.2; opacity: .65; }
+  .pocSuggestRow { display: flex; align-items: center; gap: 10px; padding: 5px 12px; }
+  .pocSuggestRow:hover, .pocSuggestRow.active { background: var(--hover-bg); }
+  .pocSuggestRow img { flex: none; width: 32px; height: 32px; border-radius: 3px; object-fit: cover; background: var(--hover-bg); }
+  .pocSuggestRow img.round { border-radius: 50%; }
+  .pocSuggestIcon { flex: none; width: 32px; height: 16px; background: currentColor; opacity: .5; -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" stroke="black" stroke-width="1.5" fill="none"/><path d="M10.5 10.5 14 14" stroke="black" stroke-width="1.5" stroke-linecap="round"/></svg>') center / 16px no-repeat; }
+  .pocSuggestText { display: flex; flex-direction: column; min-width: 0; }
+  .pocSuggestTitle, .pocSuggestSub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .pocSuggestSub { font-size: 12px; opacity: .6; }
   /* The tab doubles as the URL bar (Electron header.js editUrl). */
   .pocTitlebar .tab { cursor: text; }
   .pocTitlebar .tab-url { display: none; flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
@@ -100,6 +181,7 @@
   body.platform-win .pocTitlebar .header-side:last-child { padding-right: 0; }
   body.platform-win .pocTitlebar .window-controls { display: flex; align-self: stretch; margin-left: 4px; }
   .pocTitlebar .window-controls button { width: 46px; height: 100%; padding: 0; border: 0; background: transparent; color: var(--header-text); font: 10px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; cursor: default; }
+  .pocTitlebar .window-controls button svg { display: block; margin: auto; }
   .pocTitlebar .window-controls button:hover { background: var(--hover-bg); }
   .pocTitlebar .window-controls .close:hover { background: #e81123; color: #fff; }
   body.platform-win:not(.maximized) .pocEdge { display: block; position: fixed; z-index: 10002; }
@@ -173,6 +255,7 @@
   <div class="header-side">
     <div class="title-bar"></div>
     <form class="pocSearch" id="searchForm"><svg width="12" height="12" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input name="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search"></form>
+    <div class="nav-button pocDlBtn" id="dlBtn" title="Downloads"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.25h10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="pocDlBadge" hidden></span></div>
     <div class="nav-button" id="menuBtn" title="Settings"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.75 4.5h10.5M2.75 8h10.5M2.75 11.5h10.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></div>
     <div class="window-controls" id="windowControls"><button type="button" class="minimize" id="minBtn" title="Minimize" aria-label="Minimize">&#xE921;</button><button type="button" class="maximize" id="maxBtn" title="Maximize" aria-label="Maximize">&#xE922;</button><button type="button" class="close" id="closeBtn" title="Close" aria-label="Close">&#xE8BB;</button></div>
   </div>
@@ -186,22 +269,37 @@
   <header class="panel-header"><h1>Settings</h1><button class="close-btn" id="settingsClose" title="Close"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M12 4L4 12m8 0L4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></button></header>
   <nav id="settingsTabs">
     <button data-tab="general" class="active">General</button>
-    <button data-tab="appearance">Appearance</button>
+    <button data-tab="downloads">Downloads</button>
     <button data-tab="integrations">Integrations</button>
     <button data-tab="advanced">Advanced</button>
   </nav>
   <main>
-    <section data-tab="general"><h2>Window</h2>
-      <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label></section>
-    <section data-tab="appearance" hidden><h2>Theme</h2>
-      <div class="row"><span>Theme</span><select data-setting="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="system">Match system</option></select></div></section>
+    <section data-tab="general"><h2>Accounts</h2>
+      <ul class="pocAccountsList"></ul>
+      <p class="hint">Each account signs in separately; switching restarts the app.</p>
+      <h2>Window</h2>
+      <label class="row"><span>Back and forward buttons</span><span class="toggle"><input type="checkbox" data-setting="navButtons"><span class="slider"></span></span></label>
+      <label class="row"><span>Minimize to tray</span><span class="toggle"><input type="checkbox" data-setting="minimizeToTray"><span class="slider"></span></span></label>
+      <p class="hint">Closing the window keeps SoundCloud playing in the tray.<span id="trayHint"> On GNOME the tray needs an AppIndicator extension; without one, closing quits.</span></p>
+      <h2>Theme</h2>
+      <div class="row"><span>Theme</span><select data-setting="theme"><option value="dark">Dark</option><option value="oled">OLED (true black)</option><option value="light">Light</option><option value="system">Match system</option></select></div></section>
+    <section data-tab="downloads" hidden><h2>Downloads</h2>
+      <label class="field"><span>Folder</span><input class="textInput" data-setting="downloadFolder" placeholder="Your Downloads folder" spellcheck="false"></label>
+      <div class="buttons"><button class="btn" id="dlOpenFolder">Open folder</button></div>
+      <label class="row"><span>Download buttons</span><span class="toggle"><input type="checkbox" data-setting="downloadButton"><span class="slider"></span></span></label>
+      <p class="hint">Off hides them under tracks, albums and playlists and in the window bar.</p>
+      <label class="row"><span>Download with my account</span><span class="toggle"><input type="checkbox" data-setting="downloadUseAccount"><span class="slider"></span></span></label>
+      <p class="hint">Signed in, Go+ tracks download in full; off, they come as 30-second previews.</p>
+      <label class="field"><span>File name</span><input class="textInput" data-setting="downloadTemplate" placeholder="%(uploader)s - %(title)s.%(ext)s" spellcheck="false"></label>
+      <label class="field"><span>Album and playlist folder</span><input class="textInput" data-setting="downloadPlaylistFolder" placeholder="%(playlist_uploader)s - %(playlist_title)s" spellcheck="false"></label>
+      <p class="hint">yt-dlp output templates; empty uses the default shown.</p></section>
     <section data-tab="integrations" hidden><h2>Discord</h2>
       <label class="row"><span>Discord Rich Presence</span><span class="toggle"><input type="checkbox" data-setting="discord"><span class="slider"></span></span></label>
       <p class="hint">Shows the track you're playing on your Discord profile.</p>
       <h2>Last.fm</h2>
       <label class="row"><span>Scrobble to Last.fm</span><span class="toggle"><input type="checkbox" data-setting="lastfm"><span class="slider"></span></span></label>
       <div id="lfmSetup">
-        <p class="hint">Uses your own Last.fm API account: <a class="link" data-external="https://www.last.fm/api/account/create">create one</a>, then paste its key and shared secret. The secret is kept in your macOS Keychain.</p>
+        <p class="hint">Uses your own Last.fm API account: <a class="link" data-external="https://www.last.fm/api/account/create">create one</a>, then paste its key and shared secret. The secret is kept in your <span id="lfmStore">macOS Keychain</span>.</p>
         <label class="field"><span>API key</span><input class="textInput" id="lfmKey" autocomplete="off" spellcheck="false"></label>
         <label class="field"><span>Shared secret</span><input class="textInput" id="lfmSecret" type="password" autocomplete="off"></label>
         <div class="buttons"><button class="btn primary" id="lfmConnect">Connect Last.fm</button></div>
@@ -210,8 +308,16 @@
       <p class="hint" id="lfmStatus"></p></section>
     <section data-tab="advanced" hidden><h2>Privacy</h2>
       <label class="row"><span>Block ads and trackers</span><span class="toggle"><input type="checkbox" data-setting="adblock"><span class="slider"></span></span></label>
-      <p class="hint">Takes effect the next time the app starts.</p></section>
+      <p class="hint">Takes effect the next time the app starts.</p>
+      <h2>Updates</h2>
+      <label class="row"><span>Automatic updates</span><span class="toggle"><input type="checkbox" data-setting="autoUpdate"><span class="slider"></span></span></label>
+      <p class="hint">Downloads new versions in the background and installs them when you quit. <span id="appVersion"></span></p></section>
   </main>
+</aside>
+<aside class="pocDownloads" id="downloads" hidden>
+  <header><b>Downloads</b><span><button type="button" data-dl="open-folder">Open folder</button><button type="button" data-dl="clear">Clear</button><button type="button" data-dl="close" title="Close" aria-label="Close">×</button></span></header>
+  <div class="pocDlList"></div>
+  <p class="pocDlEmpty">Use the download button under a track, album or playlist. Downloads need yt-dlp (<span id="dlInstall">brew install yt-dlp</span>); with ffmpeg too, files get their cover and tags.</p>
 </aside>
 
 <div id="app">
@@ -236,19 +342,18 @@
         <a href="/artists" data-href="artists" class="header__link header__forArtistsButton">Artist</a>
         <div class="header__soundInput left"><a href="/upload" data-href="upload" class="uploadButton header__link" tabindex="0"><span class="uploadButton__title">Upload</span><span class="uploadButton__status sc-text-primary"></span></a></div>
         <div class="header__userNav">
-          <a class="header__userNavButton header__userNavUsernameButton" id="me" tabindex="0" aria-haspopup="true" role="button">
-            <div class="image header__userNavItem header__userNavAvatar image__lightOutline sc-artwork image__rounded m-loaded" style="height: 26px; width: 26px;">
-              <span id="meAvatar" style="width: 26px; height: 26px; opacity: 1;" class="sc-artwork image__rounded image__full"></span>
-            </div>
-          </a>
           <a id="bell" class="header__userNavItem header__userNavButton header__userNavActivitiesButton" tabindex="0" aria-haspopup="true" role="button">
             <div class="notificationIcon activities"><div data-icon="bell"></div><span class="sc-visuallyhidden">Notifications</span><span class="notificationIcon__badge"><span class="newItemBadge"></span></span></div>
           </a>
           <a id="envelope" class="header__userNavItem header__userNavButton header__userNavMessagesButton" tabindex="0" aria-haspopup="true" role="button">
             <div class="notificationIcon messages"><div data-icon="envelope"></div><span class="sc-visuallyhidden">Messages</span><span class="notificationIcon__badge"><span class="newItemBadge"></span></span></div>
           </a>
+          <a class="header__userNavButton header__userNavUsernameButton" id="me" tabindex="0" aria-haspopup="true" role="button">
+            <div class="image header__userNavItem header__userNavAvatar image__lightOutline sc-artwork image__rounded m-loaded" style="height: 26px; width: 26px;">
+              <span id="meAvatar" style="width: 26px; height: 26px; opacity: 1;" class="sc-artwork image__rounded image__full"></span>
+            </div>
+          </a>
         </div>
-        <ul class="header__navMenu sc-clearfix sc-list-nostyle left"><li><a id="moreBtn" class="header__moreButton" tabindex="0" aria-haspopup="true" role="button"><div class="header__moreButtonIcon"><div data-icon="headerMore"></div><span class="sc-visuallyhidden">Settings and more</span></div></a></li></ul>
       </div>
     </div>
   </header>
@@ -478,7 +583,7 @@
     queueHide: '.queue__hide svg', tilePlay: '.playableTile__playButton svg', soundPlay: '.soundTitle__playButton svg',
     soundLike: '.soundActions .sc-button-like svg', repost: '.soundActions .sc-button-repost svg', copylink: '.sc-button-copylink svg',
     plays: '.sc-ministats-plays svg', comments: '.sc-ministats-comments svg', reposted: '.soundContext__repost svg',
-    followers: '.sc-ministats-followers svg', verified: '.verifiedBadge svg',
+    followers: '.sc-ministats-followers svg', verified: '.verifiedBadge svg', listGoPlus: '.tierIndicator__listGoPlus svg',
     more: '.sc-button-more svg', share: '.sc-button-share svg', sounds: '.sc-ministats-sounds svg',
     likes: '.sc-ministats-likes svg', reposts: '.soundBadge .sc-ministats-reposts svg', shortcutBadge: 'svg.artistShortcutTile__badge',
     // Only on the "more" menu and the Add to Playlist modal, which harvest() opens on /discover.
@@ -498,7 +603,7 @@
     net_bandcamp: '.web-profile[href*="bandcamp.com"] svg', net_tiktok: '.web-profile[href*="tiktok.com"] svg',
     net_personal: '.web-profile:not([href*="instagram.com"]):not([href*="twitter.com"]):not([href*="%2Fx.com"]):not([href*="youtube.com"]):not([href*="facebook.com"]):not([href*="spotify.com"]):not([href*="bandcamp.com"]):not([href*="tiktok.com"]) svg',
   };
-  const HARVEST_REV = 'r6'; // bump when the pages/icons collected change
+  const HARVEST_REV = 'r7'; // bump when the pages/icons collected change
   // SoundCloud keeps "notifications read up to" in this localStorage entry
   // ({activities: <uuid of the newest one seen>}); there's no server call.
   const NOTIFY_KEY = 'V2::local::notify';
@@ -520,7 +625,7 @@
       X.send = function () { if (ok(this.__pocM)) return os.apply(this, arguments); };
       if (w.navigator.sendBeacon) w.navigator.sendBeacon = () => true;
     };
-    for (let path of ['/you/likes', '/search/sounds?q=music', '/feed', '/you/library', '/you/following', '/soundcloud', '@me', '/notifications', '/messages', '/discover']) {
+    for (let path of ['/you/likes', '/search/sounds?q=music', '/feed', '/you/library', '/you/following', '/soundcloud', '@me', '/notifications', '/messages', '/discover', '/davidbowieofficial/sets/blackstar-4']) {
       if (path === '@me') { if (!me) continue; path = '/' + me.permalink; } // your own profile: the Edit button and your sidebar
       const f = document.createElement('iframe');
       f.style.cssText = 'position:fixed;left:-20000px;top:0;width:1400px;height:900px;visibility:hidden';
@@ -1136,18 +1241,133 @@
     for (let k = 0; k < missing.length; k += 50) (await api('/tracks', { ids: missing.slice(k, k + 50).join(',') })).forEach(t => found.set(t.id, t));
     return stubs.map(t => t.title ? t : found.get(t.id)).filter(Boolean);
   }
+  // A playlist or album in SoundCloud's current design, from their listen page's
+  // markup: the hero over the artwork's colours, the action row, the uploader,
+  // the details and a compact numbered track list, and a sidebar of the
+  // uploader's albums and who liked and reposted it.
   async function viewSet(path, token) {
     const p = await api('/resolve', { url: 'https://soundcloud.com/' + path });
     if (token !== viewToken) return;
     const tracks = await fullTracks(p.tracks || []);
     if (token !== viewToken) return;
     const cover = (p.artwork_url || tracks.find(t => t.artwork_url)?.artwork_url || '').replace('-large.', '-t500x500.');
-    $('content').innerHTML = `<div class="l-fluid-fixed sc-px-2x sc-pt-3x"><div class="sc-media sc-mb-3x"><div class="sc-media-image sc-mr-3x"><div class="image sc-artwork m-loaded" style="width:200px;height:200px">${artSpan(cover, '')}</div></div>
-      <div class="sc-media-content"><div class="sc-text-secondary sc-text-h4">${p.kind === 'system-playlist' ? esc(p.short_description || 'Playlist') : p.is_album ? 'Album' : 'Playlist'} · ${p.track_count ?? tracks.length} tracks</div><h1 class="sc-text-h1 sc-text-primary sc-my-1x">${esc(p.title)}</h1>${link(p.user?.permalink, 'sc-link-secondary sc-text-h3', esc(p.user?.username))}</div></div>
-      <ul class="soundList sc-list-nostyle" id="plist"></ul></div>`;
-    $('plist').append(...addTracks(tracks).map(([t, i]) => soundItem(t, i)));
+    const pairs = addTracks(tracks);
+    const u = p.user || {}, sys = p.kind === 'system-playlist';
+    const hms = sec => { sec = Math.floor(sec); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = String(sec % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+    const total = tracks.reduce((n, t) => n + (t.full_duration || t.duration || 0), 0) / 1000;
+    const tags = ((p.tag_list || '').match(/"[^"]+"|\S+/g) || []).map(x => x.replace(/"/g, '')).filter(Boolean);
+    const release = p.release_date ? new Date(p.release_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : '';
+    // their list's counts: one decimal below 100K (14.8K), as the page shows them
+    const kfmt = n => { n = n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e5 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); };
+    const liked = isLiked(p), reposted = !sys && playlistReposts.has(p.id);
+    const action = (cls, attrs, ic, label) => `<button type="button" ${attrs} class="${cls} sc-button-secondary sc-button sc-button-medium sc-button-icon sc-button-responsive" title="${esc(label)}" aria-label="${esc(label)}"><div>${icon(ic)}</div><span class="sc-button-label sc-visuallyhidden">${esc(label)}</span></button>`;
+    const stat = (cls, ic, n, what, path) => `<li title="${(n || 0).toLocaleString()} ${what}" class="sc-ministats-item">${link(path, `sc-ministats sc-ministats-medium ${cls} sc-link-secondary`, `<div style="display:inline-block;width:16px;height:16px;margin-right:2px;vertical-align:top">${icon(ic)}</div><span aria-hidden="true">${(n || 0).toLocaleString()}</span>`)}</li>`;
+    const tag = (x, size) => link('tags/' + encodeURIComponent(x.toLowerCase()), `sc-tag sc-tag-${size}`, `<span class="sc-truncate sc-tagContent">${esc(x)}</span>`);
+    $('content').innerHTML = `<div class="l-listen-hero"><div class="fullListenHero fullHero l-inner-fullwidth sc-mx-2x m-showTracksSummary"><div style="height:100%"><div class="backgroundGradient"><div class="backgroundGradient__buffer" id="setGradient" style="background:linear-gradient(135deg,#4a4a4a 0%,#1e1e1e 100%)"></div><div class="backgroundGradient__imageOverlay"></div></div></div>
+      <div class="fullHero__foreground fullListenHero__foreground sc-p-4x">
+        <div class="fullHero__artwork"><div class="listenArtworkWrapper"><div class="listenArtworkWrapper__artwork"><div class="image image__lightOutline sc-artwork-40x sc-artwork m-loaded">${artSpan(cover, 'sc-artwork-40x')}</div></div></div></div>
+        <div class="fullHero__title"><div class="soundTitle sc-clearfix sc-hyphenate listenContext" title="${esc(p.title)}"><div class="soundTitle__titleContainer">
+          <div class="soundTitle__playButton soundTitle__playButtonHero theme-light" id="setPlay"><a role="button" class="sc-button-play playButton sc-button sc-button-xxlarge" title="Play"><div><div class="pocPlayIcon" data-kind="soundPlay">${icon('soundPlay')}</div></div></a></div>
+          <div class="soundTitle__usernameTitleContainer sc-mb-0.5x"><div class="soundTitle__titleHeroContainer"><h1 class="sc-text-h1 soundTitle__title sc-font g-type-shrinkwrap-inline theme-dark"><span>${esc(p.title)}</span></h1></div>
+            <div class="soundTitle__usernameHeroContainer"><h2 class="soundTitle__username sc-text-h3 g-opacity-transition-500 g-type-shrinkwrap-inline theme-dark">${link(u.permalink || '', 'sc-link-secondary', esc(u.username || p.short_description || '') + (u.verified ? ` <div style="display:inline-block"><span class="verifiedBadge soundTitle__usernameHeroContainer__verifiedBadge sc-ml-1x theme-light">${icon('verified')}</span></div>` : ''))}</h2></div></div></div></div></div>
+        <div class="fullHero__info">${p.last_modified ? `<div class="fullHero__uploadTime sc-type-medium sc-text-body sc-mb-1x theme-dark sc-text-primary">Updated <time class="relativeTime">${ago(p.last_modified)}</time></div>` : ''}${p.genre ? tag(p.genre, 'large') : ''}</div>
+        <div class="fullHero__playerArea"><div class="fullHero__waveform"><div class="waveformWrapper"><div class="waveformWrapper__waveform"><canvas data-hero data-ids="${tracks.map(t => t.id).join(',')}" style="width:100%;height:100%;display:block"></canvas></div></div></div></div>
+        <div class="fullHero__tracksSummary"><div class="playlistTrackCount sc-font"><div class="genericTrackCount sc-font theme-dark sc-pt-2x sc-text-primary m-active" title="${p.track_count ?? tracks.length} tracks"><div class="genericTrackCount__title sc-text-h1">${p.track_count ?? tracks.length}</div><div class="genericTrackCount__subtitle sc-text-h5">Tracks</div><div class="sc-pt-0.5x"></div><div class="genericTrackCount__duration sc-type-small sc-type-light sc-text-secondary sc-text-h5">${hms(total)}</div></div></div></div>
+      </div></div></div>
+    <div class="l-listen-wrapper"><div class="l-about-main"><div class="l-about-rows">
+      <div class="l-about-row"><div class="l-about-top sc-px-2x"><div class="listenEngagement sc-clearfix"><div class="listenEngagement__footer">
+        <div class="soundActions sc-button-toolbar listenEngagement__actions soundActions__medium"><div class="sc-button-group sc-button-group-medium">
+          ${action('sc-button-like' + (liked ? ' sc-button-selected' : ''), `data-${SOCIAL_ATTR[p.kind] || 'plike'}="${esc(sys ? p.urn : p.id)}"`, 'soundLike', liked ? 'Unlike' : 'Like')}
+          ${sys ? '' : action('sc-button-repost' + (reposted ? ' sc-button-selected' : ''), `data-prepost="${p.id}"`, 'repost', reposted ? 'Unpost' : 'Repost')}
+          ${action('sc-button-copylink', `data-copy="${esc(p.permalink_url)}"`, 'copylink', 'Copy Link')}
+          ${action('sc-button-more', `data-more="${esc(remember(p))}" aria-haspopup="true"`, 'more', 'More')}</div></div>
+        ${sys ? '' : `<ul class="soundStats sc-ministats-group listenEngagement__stats sc-ministats-group-right">${stat('sc-ministats-likes', 'likes', p.likes_count, 'likes', path + '/likes')}${stat('sc-ministats-reposts', 'reposts', p.reposts_count, 'reposts', path + '/reposts')}</ul>`}
+      </div></div></div></div>
+      <div class="l-about-row l-listen__mainContent">
+        <div class="l-about-left"><div class="l-about-left-content sc-pl-2x"><div class="listenArtistInfo" id="setArtist"></div></div></div>
+        <div class="l-about-right"><div class="listenDetails">
+          ${tags.length || release || p.description ? `<div class="listenDetails__partialInfo sc-px-2x sc-py-1x"><div class="truncatedAudioInfo"><div class="truncatedAudioInfo__content">
+            ${p.description ? `<div class="sc-type-small sc-text-body sc-mb-2x" style="white-space:pre-wrap">${esc(p.description)}</div>` : ''}
+            ${tags.length ? `<div class="soundTags"><div class="sc-tag-group">${tags.map(x => tag(x, 'medium')).join('')}</div></div>` : ''}
+            ${release ? `<div class="truncatedAudioInfo__metadata"><div class="listenInfo"><div class="sc-mt-1x"><dl class="listenInfo__releaseList sc-font"><dt class="listenInfo__releaseTitle sc-text-secondary sc-text-h4">${p.is_album ? 'Album release date:' : 'Release date:'}</dt><dd class="listenInfo__releaseData sc-text-secondary">${release}</dd></dl></div></div></div>` : ''}
+          </div></div></div>` : ''}
+          <div class="listenDetails__trackList"><div class="trackList"><ul class="trackList__list sc-clearfix sc-list-nostyle" id="plist"></ul></div></div>
+        </div></div></div></div></div>
+      <div class="l-sidebar-right" id="setSidebar"></div></div>`;
+    $('setPlay').onclick = () => pairs[0] && toggleOrPlay(pairs[0][1]);
+    $('plist').append(...pairs.map(([t, i], n) => {
+      const li = document.createElement('li');
+      li.className = 'trackList__item sc-border-light-bottom sc-px-2x';
+      li.dataset.i = i;
+      const own = t.user?.id === u.id, liked = likedIds.has(t.id), reposted = repostedIds.has(t.id);
+      const small = (cls, attrs, ic, label) => `<button type="button" ${attrs} class="${cls} sc-button-secondary sc-button sc-button-small sc-button-icon sc-button-responsive" title="${esc(label)}" aria-label="${esc(label)}"><div>${icon(ic)}</div><span class="sc-button-label sc-visuallyhidden">${esc(label)}</span></button>`;
+      li.innerHTML = `<div class="trackItem g-flex-row sc-type-small sc-text-body sc-type-light sc-text-secondary m-interactive"><div class="trackItem__image sc-py-1x sc-mr-2x"><div class="image image__lightOutline sc-artwork-4x sc-artwork m-loaded">${artSpan(art(t, 't120x120'), 'sc-artwork-4x')}</div>
+          <div class="trackItem__play"><a role="button" class="sc-button-play playButton sc-button sc-button-small" title="Play"><div><div class="pocPlayIcon">${icon('tilePlay')}</div></div></a></div></div>
+        <div class="trackItem__numberWrapper"><span class="trackItem__number sc-font sc-mr-0.75x"><span class="trackItem__separator sc-text-secondary sc-mr-0.25x">${n + 1}</span> · </span></div>
+        <div class="trackItem__content sc-truncate">${own ? '' : link(t.user?.permalink, 'trackItem__username sc-link-light sc-link-secondary sc-mr-0.5x', esc(t.user?.username) + ' -')}${link(trackPath(t) + '?in=' + path, 'trackItem__trackTitle sc-link-primary', esc(t.title))}</div>
+        <div class="trackItem__additional">${t.monetization_model === 'SUB_HIGH_TIER' || t.policy === 'SNIP' ? `<span class="trackItem__tierIndicator tierIndicator__listGoPlus"><div>${icon('listGoPlus') || '<span class="pocGoPlus">GO+</span>'}</div></span>` : ''}
+          ${t.playback_count != null ? `<span class="trackItem__playCount sc-ministats sc-ministats-medium sc-ministats-plays"><div style="display:inline-block;width:16px;height:16px;vertical-align:top">${icon('plays')}</div> ${kfmt(t.playback_count)}</span>` : ''}
+          <div class="trackItem__actions"><div class="soundActions sc-button-toolbar soundActions__small"><div class="sc-button-group sc-button-group-small">
+            ${small('sc-button-like' + (liked ? ' sc-button-selected' : ''), `data-like="${t.id}"`, 'soundLike', liked ? 'Unlike' : 'Like')}
+            ${small('sc-button-repost' + (reposted ? ' sc-button-selected' : ''), `data-repost="${t.id}"`, 'repost', reposted ? 'Unpost' : 'Repost')}
+            ${small('sc-button-copylink', `data-copy="${esc(t.permalink_url)}"`, 'copylink', 'Copy Link')}
+            ${small('sc-button-more', `data-more="${esc(remember(t))}" data-short="1" aria-haspopup="true"`, 'more', 'More')}</div></div></div></div></div>`;
+      li.querySelector('.trackItem__image').onclick = () => toggleOrPlay(i);
+      return li;
+    }));
     markPlaying();
+    heroGradient(cover, $('setGradient'));
+    { const c = document.querySelector('canvas[data-hero]'), cur = current(), at = pairs.find(([t]) => t.id === cur?.id); if (at) { c.closest('.fullHero').classList.remove('m-showTracksSummary'); drawWave(at[0], at[1], audio.duration ? audio.currentTime / audio.duration : 0, c); } }
+    // the uploader, and the sidebar: their albums, who liked and reposted it
+    if (!sys && u.id) {
+      api('/users/' + u.id).then(full => {
+        if (token !== viewToken) return;
+        const v = { ...u, ...full };
+        $('setArtist').innerHTML = `<div class="userBadge m-vertical${v.verified ? ' m-verified' : ''}"><div class="userBadge__avatar sc-mr-2x" style="width:120px;height:120px"><div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body">${link(v.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__lightOutline sc-artwork-15x sc-artwork m-loaded">${artSpan((v.avatar_url || '').replace('-large.', '-t200x200.'), 'sc-artwork-15x image__rounded')}</div></div>`)}</div></div></div>
+          <div class="userBadge__content sc-media-content"><div class="userBadge__title"><h3 class="userBadge__username sc-type-light sc-link-primary sc-text-h4">${link(v.permalink, 'userBadge__usernameLink sc-link-dark sc-link-primary sc-truncate sc-mr-0.5x', `<span class="sc-truncate">${esc(v.username)}</span>`, v.username)}${v.verified ? `<div style="display:inline-block"><span class="verifiedBadge userBadge__verifiedBadge">${icon('verified')}</span></div>` : ''}</h3></div>
+            <div class="userBadge__meta"><div class="userBadge__stats sc-text-captions sc-mt-0.5x"><div aria-label="User stats" class="userStats"><ul class="sc-ministats-group">${ministat('sc-ministats-followers', 'followers', v.followers_count, 'followers').replace(`>${count(v.followers_count)}<`, `>${kfmt(v.followers_count)}<`)}${ministat('sc-ministats-sounds', 'sounds', v.track_count, 'tracks').replace(`>${count(v.track_count)}<`, `>${(v.track_count || 0).toLocaleString()}<`)}</ul></div></div></div>
+            ${v.id === me?.id ? '' : `<div class="userBadge__actions"><button type="button" data-follow="${v.id}" class="sc-button-follow sc-button sc-button-medium sc-button-cta sc-button-primary${followingIds.has(v.id) ? ' sc-button-selected' : ''}" title="Follow"><span class="sc-button-label">${followingIds.has(v.id) ? 'Following' : 'Follow'}</span></button></div>`}</div></div>`;
+      }).catch(() => {});
+      const header = (title, href) => `<a class="sidebarHeader g-flex-row-centered-spread sc-link-light sc-link-primary sidebar__moreLink sc-border-light-bottom" href="/${esc(href)}" data-href="${esc(href)}"><h4 class="sidebarHeader__title sc-font sc-link-primary g-flex-row-centered noIcon sidebarHeader__title__webi__style"><span class="sidebarHeader__actualTitle sidebarHeader__actualTitle__webi__style">${title}</span></h4><span class="sidebarHeader__more">View all</span></a>`;
+      const avatars = users => `<div class="usersList floating user-avatar-badge-hover sc-px-2x"><ul class="usersList__list sc-list-nostyle">${users.map(x => `<li class="usersList__item"><div class="g-avatar-badge userAvatarBadge"><div class="g-avatar-badge-body">${link(x.permalink, 'g-avatar-badge-avatar-link', `<div class="g-avatar-badge-avatar"><div class="image image__whiteOutline sc-artwork-6x sc-artwork m-loaded">${artSpan((x.avatar_url || '').replace('-large.', '-t120x120.'), 'sc-artwork-6x image__rounded')}</div></div>`, x.username)}</div></div></li>`).join('')}</ul></div>`;
+      Promise.all([
+        api(`/users/${u.id}/albums`, { limit: 4 }).catch(() => ({})),
+        api(`/playlists/${p.id}/likers`, { limit: 9 }).catch(() => ({})),
+        api(`/playlists/${p.id}/reposters`, { limit: 9 }).catch(() => ({})),
+      ]).then(([albums, likers, reposters]) => {
+        if (token !== viewToken) return;
+        const others = (albums.collection || []).filter(a => a.id !== p.id).slice(0, 3);
+        const year = a => new Date(a.release_date || a.created_at).getFullYear();
+        const kind = a => ({ ep: 'EP', single: 'Single', compilation: 'Compilation' })[a.set_type] || 'Album';
+        $('setSidebar').innerHTML = `<div class="listenNetworkSidebar">
+          ${others.length ? `<article class="sidebarModule setsModule">${header('Albums from this user', u.permalink + '/albums')}<div class="sidebarContent"><div class="soundBadgeList compact"><ul class="sc-list-nostyle sc-clearfix">${others.map(a => `<li class="soundBadgeList__item"><div class="soundBadge compact sc-media hiddenActions playlist"><span class="soundBadge__artwork sc-mr-2x sc-media-image"><div class="image image__lightOutline sc-artwork-6x sc-artwork m-loaded">${artSpan(art(a, 't120x120'), 'sc-artwork-6x')}</div></span>
+            <div class="sc-media-content soundBadge__content"><div class="soundTitle sc-clearfix sc-hyphenate sc-type-h3 sc-text-h4" title="${esc(a.title)}"><div class="soundTitle__titleContainer"><div class="soundTitle__usernameTitleContainer sc-mb-0.5x"><div class="sc-type-light sc-text-secondary sc-text-h4 soundTitle__secondary sc-truncate">${link(u.permalink, 'soundTitle__username sc-link-secondary sc-link-light', `<span class="soundTitle__usernameText">${esc(u.username)}</span>`)}</div>${link(trackPath(a), 'sc-link-primary soundTitle__title sc-link-dark sc-text-h4', `<span class="sc-truncate">${esc(a.title)}</span>`, a.title)}</div></div></div>
+            <span class="releaseDateCompact sc-type-light sc-text-secondary sc-font-light">${kind(a)}&nbsp;·&nbsp;<span class="sc-font-light">${year(a)}</span></span></div></div></li>`).join('')}</ul></div></div></article>` : ''}
+          ${likers.collection?.length ? `<article class="sidebarModule soundLikesModule">${header(`${(p.likes_count || 0).toLocaleString()} likes`, path + '/likes')}<div class="sidebarContent">${avatars(likers.collection)}</div></article>` : ''}
+          ${reposters.collection?.length ? `<article class="sidebarModule soundRepostsModule">${header(`${(p.reposts_count || 0).toLocaleString()} reposts`, path + '/reposts')}<div class="sidebarContent">${avatars(reposters.collection)}</div></article>` : ''}</div>`;
+      });
+    }
     return { title: p.title };
+  }
+  // The hero's background, as SoundCloud draws it: a diagonal gradient from the
+  // artwork's top-left colour to its overall one (sndcdn allows reading it).
+  function heroGradient(url, el) {
+    if (!url || !el) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = c.height = 8;
+        const g = c.getContext('2d');
+        g.drawImage(img, 0, 0, 8, 8);
+        const d = g.getImageData(0, 0, 8, 8).data;
+        const avg = (x0, y0, x1, y1) => { const s = [0, 0, 0]; let n = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const k = (y * 8 + x) * 4; s[0] += d[k]; s[1] += d[k + 1]; s[2] += d[k + 2]; n++; } return s.map(v => Math.round(v / n)); };
+        const a = avg(0, 0, 3, 3), b = avg(0, 0, 8, 8).map(v => Math.round(v * .65));
+        el.style.background = `linear-gradient(135deg, rgb(${a}) 0%, rgb(${b}) 100%)`;
+      } catch {}
+    };
+    img.src = url.replace('t500x500', 't50x50');
   }
   async function viewTrack(path, token) {
     const t = await api('/resolve', { url: 'https://soundcloud.com/' + path });
@@ -1321,18 +1541,39 @@
     // promotions etc.: the init script misses frames that keep their about:blank window (WebView2)
     try { w.eval(window.__cleanJs || ''); } catch {}
     const st = w.document.createElement('style');
-    st.textContent = 'header.header, .playControls, .l-footer, .l-product-banners { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; } .l-top { top: 0 !important; }'; // .l-top: pinned under their (hidden) 46px header
+    // (secure.soundcloud.com's sign-in form keeps a light colour scheme: a frame whose scheme differs
+    // from the page around it gets an opaque white background, the bars around the form)
+    st.textContent = 'iframe[src*="secure.soundcloud.com"] { color-scheme: normal !important; background: transparent !important; } header.header, .playControls, .l-footer, .l-product-banners { display: none !important; } #app .l-container.l-content, #content { padding-top: 0 !important; } .l-top { top: 0 !important; }'; // .l-top: pinned under their (hidden) 46px header
     w.document.documentElement.appendChild(st);
     w.document.documentElement.style.colorScheme = themeName();
     const P = w.HTMLMediaElement.prototype, play = P.play;
     P.play = function () { frameMedia.add(this); audio.pause(); return play.apply(this, arguments); };
   }
   audio.addEventListener('play', () => frameMedia.forEach(m => { try { m.pause(); } catch {} }));
+  // A frame shows once its page has drawn its own background (not white),
+  // without waiting for slow frames of its own (sign-in's), or once loaded.
+  document.addEventListener('load', e => { if (e.target.classList?.contains('pocEmbed')) setTimeout(() => e.target.classList.add('pocReady'), 50); }, true);
+  setInterval(() => document.querySelectorAll('.pocEmbed:not(.pocReady)').forEach(f => {
+    try {
+      const d = f.contentDocument;
+      if (!d || d.location.href === 'about:blank' || d.readyState === 'loading' || !d.body) return;
+      const bg = getComputedStyle(d.body).backgroundColor;
+      if (!/^rgba\(0, 0, 0, 0\)$|^rgb\(255, 255, 255\)$/.test(bg)) f.classList.add('pocReady');
+    } catch { f.classList.add('pocReady'); } // another origin: no way to tell
+  }), 100);
   function viewEmbed(path, token) {
     $('content').innerHTML = `<iframe class="pocEmbed" title="SoundCloud" src="/${esc(path)}"></iframe>`;
     $('content').style.setProperty('--poc-player', $('playControls').offsetHeight + 'px');
     const f = $('content').firstElementChild, born = Date.now();
     let seen = path.split('?')[0];
+    // A fresh profile's first sign-in page leaves its form's frame 0 px tall
+    // (it sizes itself only on a second visit): reload it once if so.
+    if (seen === 'signin') setTimeout(() => {
+      try {
+        const form = [...f.contentDocument.querySelectorAll('iframe')].find(x => /web-auth/.test(x.src));
+        if (token === viewToken && form && !form.getBoundingClientRect().height) f.contentWindow.location.reload();
+      } catch {}
+    }, 4000);
     const timer = setInterval(() => {
       if (!f.isConnected || token !== viewToken) return clearInterval(timer);
       // Signed in from the sign-in page: start over with the new session.
@@ -1592,26 +1833,66 @@
   }
   const menuLink = (path, label, ic) => `<li>${link(path, 'headerMenu__link', `${ic ? `<div>${icon(ic)}</div>` : ''}${label}`)}</li>`;
   const extLink = (url, label, ic) => `<li><a class="headerMenu__link" href="${url}" data-external="${url}" target="_blank">${ic ? `<div>${icon(ic)}</div>` : ''}${label}</a></li>`;
-  // Their profile menu, minus "Try Artist Pro".
-  const openUserMenu = btn => headerMenu(btn, 'user', 157, `<div class="headerMenu profileMenu m-light"><ul class="headerMenu__list profileMenu__listener sc-list-nostyle sc-my-1x">${[
-    menuLink(me.permalink, 'Profile', 'pmProfile'), menuLink('you/likes', 'Likes', 'pmLikes'), menuLink('you/sets', 'Playlists', 'pmSets'),
-    menuLink('you/stations', 'Stations', 'pmStations'), menuLink('you/following', 'Following', 'pmFollowing'), menuLink('people', 'Who to follow', 'pmPeople'),
-    extLink('https://artists.soundcloud.com/benefits', 'Benefits', 'pmBenefits'), menuLink('artists', 'Tracks', 'pmTracks'),
-    menuLink('you/insights', 'Insights', 'pmInsights'), extLink('https://checkout.soundcloud.com/artist', 'Distribute', 'pmDistribute'),
-  ].join('')}</ul></div>`);
-  // Their "more" menu: the items in the app's header today, tracking refs dropped.
-  const openMoreMenu = btn => headerMenu(btn, 'more', 170, `<div class="headerMenu moreMenu m-light">${[
-    [menuLink('pages/membership', 'Artist Membership')],
-    [extLink('https://help.soundcloud.com/hc', 'Support'), `<li><a class="headerMenu__link moreMenu__link moreMenu__keyboard" href="/" data-act="keys">Keyboard shortcuts</a></li>`],
-    [menuLink('you/subscriptions', 'Subscription'), menuLink('settings', 'Settings'), menuLink('logout', 'Sign out')],
-  ].map(g => `<ul class="headerMenu__list sc-list-nostyle">${g.join('').replaceAll('"headerMenu__link"', '"headerMenu__link moreMenu__link"')}</ul>`).join('')}</div>`);
+  // The avatar menu is the account menu, as chrome.js makes SoundCloud's:
+  // their profile items without Benefits/Distribute, the app's accounts, then
+  // what was the three-dots menu's: Support, Subscription, Settings, Sign out.
+  const strokeIcon = d => `<svg class="profileMenu__icon" width="16" height="16" viewBox="0 0 16 16"><path d="${d}" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const openUserMenu = btn => {
+    const menu = headerMenu(btn, 'user', 157, `<div class="headerMenu profileMenu m-light"><ul class="headerMenu__list profileMenu__listener sc-list-nostyle sc-my-1x">${[
+      menuLink(me.permalink, 'Profile', 'pmProfile'), menuLink('you/likes', 'Likes', 'pmLikes'), menuLink('you/sets', 'Playlists', 'pmSets'),
+      menuLink('you/stations', 'Stations', 'pmStations'), menuLink('you/following', 'Following', 'pmFollowing'), menuLink('people', 'Who to follow', 'pmPeople'),
+      menuLink('artists', 'Tracks', 'pmTracks'), menuLink('you/insights', 'Insights', 'pmInsights'),
+    ].join('')}</ul><ul class="headerMenu__list sc-list-nostyle pocAccounts"></ul><ul class="headerMenu__list sc-list-nostyle pocAccount">${[
+      `<li><a class="headerMenu__link" href="https://help.soundcloud.com/hc" data-external="https://help.soundcloud.com/hc"><div>${strokeIcon('M8 14.25a6.25 6.25 0 1 0 0-12.5 6.25 6.25 0 0 0 0 12.5zM6.25 6.25a1.75 1.75 0 1 1 2.5 1.6c-.5.25-.75.6-.75 1.15v.25M8 11.25v.01')}</div>Support</a></li>`,
+      `<li>${link('you/subscriptions', 'headerMenu__link', `<div>${strokeIcon('M2 4h12v8H2zM2 6.75h12M4.5 9.5h2.5')}</div>Subscription`)}</li>`,
+      `<li>${link('settings', 'headerMenu__link', `<div>${strokeIcon('M2.5 4.5h6.5M12 4.5h1.5M2.5 11.5h1.5M7 11.5h6.5M10.5 3v3M5.5 10v3')}</div>Settings`)}</li>`,
+      `<li>${link('logout', 'headerMenu__link', `<div>${strokeIcon('M6.5 2.5h-3v11h3M10 5l3 3-3 3M13 8H6.5')}</div>Sign out`)}</li>`,
+    ].join('')}</ul></div>`);
+    accountRows(menu.querySelector('.pocAccounts'), 'headerMenu__link');
+    // right-aligned to the avatar, now the last item
+    const r = btn.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.round(r.right - menu.offsetWidth)) + 'px';
+    return menu;
+  };
+  // --- Accounts (accounts.rs): each extra one has its own sign-in, and
+  // switching restarts the app on it. Listed in the avatar menu and in
+  // Settings (a new account starts signed out, without an avatar menu).
+  const accounts = window.__accounts || { accounts: [{ id: 'default', name: '', avatar: '' }], current: 'default' };
+  function accountRows(list, rowClass) {
+    list.replaceChildren();
+    for (const acc of accounts.accounts) {
+      const current = acc.id === accounts.current;
+      const row = list.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: rowClass + ' pocAccountRow', href: '#' }));
+      row.append(Object.assign(document.createElement(acc.avatar ? 'img' : 'span'), { className: 'pocAccountAvatar', src: acc.avatar || '' }),
+        Object.assign(document.createElement('span'), { className: 'pocAccountName', textContent: acc.name || 'Signed out' }));
+      if (current) row.append(Object.assign(document.createElement('span'), { className: 'pocAccountCheck', innerHTML: strokeIcon('M3.5 8.5l3 3 6-7'), title: 'Current account' }));
+      else if (acc.id !== 'default') {
+        const x = row.appendChild(Object.assign(document.createElement('button'), { className: 'pocAccountRemove', innerHTML: strokeIcon('M4.5 4.5l7 7m0-7l-7 7'), title: 'Remove this account and its sign-in from the app' }));
+        x.addEventListener('click', e => {
+          e.preventDefault(); e.stopPropagation();
+          // (no confirm() dialog in the webview: a second click confirms)
+          if (!x.classList.contains('confirm')) {
+            x.classList.add('confirm'); x.textContent = 'Remove?';
+            return setTimeout(() => { x.classList.remove('confirm'); x.innerHTML = strokeIcon('M4.5 4.5l7 7m0-7l-7 7'); }, 3000);
+          }
+          window.ipc?.postMessage('account:remove:' + acc.id);
+          accounts.accounts = accounts.accounts.filter(a => a !== acc);
+          row.parentElement.remove();
+        });
+      }
+      row.addEventListener('click', e => { e.preventDefault(); if (!current) window.ipc?.postMessage('account:switch:' + acc.id); });
+    }
+    const add = list.appendChild(document.createElement('li')).appendChild(Object.assign(document.createElement('a'), { className: rowClass + ' pocAccountRow', href: '#' }));
+    add.append(Object.assign(document.createElement('span'), { className: 'pocAccountAvatar pocAccountPlus', textContent: '+' }), Object.assign(document.createElement('span'), { className: 'pocAccountName', textContent: 'Add account' }));
+    add.addEventListener('click', e => { e.preventDefault(); window.ipc?.postMessage('account:add'); });
+  }
   // SoundCloud's "H" dialog, listing what this app supports.
   function openShortcuts() {
     const rows = [['Space', 'Play/Pause'], ['Shift + →', 'Next'], ['Shift + ←', 'Previous'], ['→ / ←', 'Seek 5 s'], ['0–9', 'Seek to 0–90%'], ['Shift + ↑ / ↓', 'Volume up/down'],
       ['M', 'Mute/Unmute'], ['L', 'Like'], ['R', 'Repost'], ['Q', 'Show Next up'], ['H', 'Keyboard shortcuts'], ['⌘[ / ⌘]', 'Back/Forward'], ['⌘R', 'Reload page'], ['⌘F', 'Search'], ['⌘,', 'App settings']];
     openModal(['Keyboard shortcuts'], `<table class="sc-text-body" style="width:100%;border-spacing:0 8px">${rows.map(([k, v]) => `<tr><td style="width:40%"><kbd class="sc-text-h4">${k}</kbd></td><td class="sc-text-secondary">${v}</td></tr>`).join('')}</table>`);
   }
-  for (const [id, open] of [['me', openUserMenu], ['bell', openNotifications], ['envelope', openMessages], ['moreBtn', openMoreMenu]]) {
+  for (const [id, open] of [['me', openUserMenu], ['bell', openNotifications], ['envelope', openMessages]]) {
     $(id).onclick = e => { e.preventDefault(); if (me) Promise.resolve(open(e.currentTarget)).catch(err => status('Error: ' + err.message)); };
     $(id).onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); e.currentTarget.click(); } };
   }
@@ -1681,8 +1962,7 @@
 
   // Waveforms: SoundCloud serves the samples as JSON next to the PNG.
   const waves = new Map();
-  async function drawWave(t, i, progress = 0) {
-    const c = document.querySelector(`canvas[data-i="${i}"]`);
+  async function drawWave(t, i, progress = 0, c = document.querySelector(`canvas[data-i="${i}"]`)) {
     if (!c || !t?.waveform_url) return;
     let w = waves.get(t.id);
     if (!w) {
@@ -1725,6 +2005,7 @@
     const t = current();
     document.querySelectorAll('[data-i]:not(canvas)').forEach(el => {
       const on = !!t && queue[Number(el.dataset.i)]?.id === t.id && !audio.paused;
+      el.querySelector('.trackItem')?.classList.toggle('active', !!t && queue[Number(el.dataset.i)]?.id === t.id);
       el.querySelector('.playableTile')?.classList.toggle('m-playing', on);
       const btn = el.querySelector('.sc-button-play');
       btn?.classList.toggle('sc-button-pause', on);
@@ -1989,6 +2270,12 @@
     if ($('dur').textContent !== dur) $('dur').textContent = dur;
     const i = order[pos];
     if (document.querySelector('.soundList__item')) drawWave(queue[i], i, t / audio.duration);
+    // a playlist page's hero shows the playing track's waveform, when it is one of the playlist's
+    const hero = document.querySelector('canvas[data-hero]');
+    const mine = hero && queue[i] && hero.dataset.ids.split(',').includes(String(queue[i].id));
+    // as SoundCloud: the track count until one of its tracks plays, then that track's waveform
+    hero?.closest('.fullHero').classList.toggle('m-showTracksSummary', !mine);
+    if (mine) drawWave(queue[i], i, t / audio.duration, hero);
   }
   // timeupdate comes only a few times a second, which moves the bar and the
   // waveform in visible jumps; SoundCloud repaints every frame while playing.
@@ -2038,6 +2325,106 @@
   $('showQueue').onclick = e => { e.preventDefault(); toggleQueue(); };
   $('queueHide').onclick = () => toggleQueue(false);
   $('searchForm').onsubmit = e => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) go('search?q=' + encodeURIComponent(q)); };
+  // Suggestions while typing, as chrome.js shows them over soundcloud.com:
+  // matches in your own library first (likes, your tracks, liked and created
+  // playlists, followings, reposts), then SoundCloud's results and query
+  // suggestions. Rows are divs: the document's link handler would take <a>s.
+  {
+    const search = $('searchForm'), input = search.q;
+    const toItem = (o, src) => {
+      if (!o?.permalink_url) return null;
+      const user = o.kind === 'user';
+      return { title: user ? o.username : o.title, sub: [src, user ? '' : o.user?.username].filter(Boolean).join(' · '), user,
+        art: (o.artwork_url || o.avatar_url || o.user?.avatar_url || '').replace('-large.', '-t50x50.'), path: new URL(o.permalink_url).pathname.slice(1) };
+    };
+    const library = new Map(); // path -> item, filled in the background on first focus
+    let libraryAt = 0;
+    const loadLibrary = () => {
+      if (!me || Date.now() - libraryAt < 10 * 60e3) return;
+      libraryAt = Date.now();
+      const sources = [
+        [`/users/${me.id}/tracks`, x => [x, 'Your track']],
+        [`/users/${me.id}/playlists`, x => [x, x.is_album ? 'Your album' : 'Your playlist']],
+        ['/me/library/all', x => [x.playlist || x.system_playlist, /like/.test(x.type) ? 'Liked' : 'Yours']],
+        [`/users/${me.id}/track_likes`, x => [x.track, 'Liked']],
+        [`/users/${me.id}/followings`, x => [x, 'Following']],
+        [`/stream/users/${me.id}/reposts`, x => [x.track || x.playlist, 'Reposted']],
+      ];
+      for (const [path, pick] of sources) (async () => {
+        // Note: whole library in memory, capped at 50 pages (10k items) a source.
+        let page = await api(path, { limit: 200, linked_partitioning: 1 }).catch(() => null);
+        for (let n = 0; page && n < 50; n++) {
+          for (const x of page.collection || []) { const it = toItem(...pick(x)); if (it && !library.has(it.path)) library.set(it.path, it); }
+          if (suggest.classList.contains('open')) renderSuggest();
+          page = page.next_href && await api(page.next_href).catch(() => null);
+        }
+      })();
+    };
+    const matchLibrary = q => {
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean), out = [];
+      for (const it of library.values()) {
+        const t = it.title.toLowerCase(), hay = t + ' ' + it.sub.toLowerCase();
+        if (words.every(w => hay.includes(w))) out.push([t.startsWith(words[0]) ? 0 : t.includes(' ' + words[0]) ? 1 : 2, it]);
+      }
+      return out.sort((a, b) => a[0] - b[0]).slice(0, 6).map(x => x[1]);
+    };
+    const suggest = search.appendChild(Object.assign(document.createElement('div'), { className: 'pocSuggest', role: 'listbox' }));
+    let remote = { q: '', items: [], queries: [] }, remoteTimer, remoteSeq = 0;
+    const el = (tag, cls, text) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: text } : {});
+    const row = (path, title, sub, art, round) => {
+      const r = el('div', 'pocSuggestRow');
+      r.setAttribute('role', 'option');
+      r.dataset.path = path;
+      r.append(art === null ? el('span', 'pocSuggestIcon') : Object.assign(el('img', round ? 'round' : ''), art ? { src: art } : {}));
+      const text = r.appendChild(el('span', 'pocSuggestText'));
+      text.append(el('span', 'pocSuggestTitle', title));
+      if (sub) text.append(el('span', 'pocSuggestSub', sub));
+      return r;
+    };
+    function renderSuggest() {
+      const q = input.value.trim();
+      suggest.replaceChildren();
+      if (!q) return suggest.classList.remove('open');
+      suggest.append(row('search?q=' + encodeURIComponent(q), `Search for “${q}”`, '', null));
+      const mine = matchLibrary(q), seen = new Set(mine.map(it => it.path));
+      const section = (label, items) => { if (items.length) { suggest.append(el('div', 'pocSuggestHead', label)); items.forEach(it => suggest.append(it)); } };
+      section('In your library', mine.map(it => row(it.path, it.title, it.sub, it.art, it.user)));
+      if (remote.q === q) {
+        section('On SoundCloud', remote.items.filter(it => !seen.has(it.path)).map(it => row(it.path, it.title, it.sub, it.art, it.user)));
+        section('Suggestions', remote.queries.filter(s => s.toLowerCase() !== q.toLowerCase()).slice(0, 4).map(s => row('search?q=' + encodeURIComponent(s), s, '', null)));
+      }
+      suggest.classList.add('open');
+    }
+    const fetchRemote = q => {
+      const seq = ++remoteSeq;
+      Promise.all([api('/search', { q, limit: 6 }).catch(() => ({})), api('/search/queries', { q, limit: 6 }).catch(() => ({}))]).then(([r, s]) => {
+        if (seq !== remoteSeq) return;
+        remote = { q, items: (r.collection || []).map(o => toItem(o, o.kind === 'user' ? 'Profile' : o.kind === 'playlist' ? (o.is_album ? 'Album' : 'Playlist') : '')).filter(Boolean), queries: (s.collection || []).map(x => x.output) };
+        renderSuggest();
+      });
+    };
+    const pickRow = r => { go(r.dataset.path); input.blur(); };
+    input.addEventListener('focus', () => { loadLibrary(); renderSuggest(); });
+    input.addEventListener('input', () => {
+      renderSuggest();
+      clearTimeout(remoteTimer);
+      const q = input.value.trim();
+      if (q) remoteTimer = setTimeout(() => fetchRemote(q), 150);
+    });
+    input.addEventListener('blur', () => suggest.classList.remove('open'));
+    input.addEventListener('keydown', e => {
+      const rows = [...suggest.querySelectorAll('.pocSuggestRow')], i = rows.findIndex(r => r.classList.contains('active'));
+      if (e.key === 'Escape') input.blur();
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        rows[i]?.classList.remove('active');
+        const n = rows[(i + (e.key === 'ArrowDown' ? 1 : rows.length - (i < 0 ? 0 : 1))) % rows.length];
+        n?.classList.add('active'); n?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter' && i >= 0) { e.preventDefault(); pickRow(rows[i]); }
+    });
+    suggest.addEventListener('mousedown', e => e.preventDefault()); // keep the input's focus
+    suggest.addEventListener('click', e => { const r = e.target.closest('.pocSuggestRow'); if (r) pickRow(r); });
+  }
   // Every in-app link carries its route in data-href; other links never navigate the page.
   document.addEventListener('click', e => {
     const a = e.target.closest('a');
@@ -2099,10 +2486,15 @@
     if (e.detail === 2) window.ipc?.postMessage('zoom'); else window.ipc?.postMessage('drag');
   });
 
-  // Windows: our own window buttons and resize edges; Rust drops the native
-  // frame only once told they exist. macOS keeps its traffic lights.
-  if (isWin) {
+  // Windows and Linux: our own window buttons and resize edges; Rust drops
+  // the native frame only once told they exist. macOS keeps its traffic lights.
+  if (isWin || isLinux) {
     document.body.classList.add('platform-win');
+    // Linux has no Segoe icon font: drawn buttons instead
+    const glyph = d => `<svg width="16" height="16" viewBox="0 0 16 16"><path d="${d}" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>`;
+    const glyphs = { minBtn: 'M3.5 8h9', maxBtn: 'M4 4h8v8H4z', restore: 'M4 6h6v6H4zM6 6V4h6v6h-2', closeBtn: 'M4 4l8 8m0-8l-8 8' };
+    // (no tooltips on Linux: its own window buttons have none)
+    if (isLinux) for (const id of ['minBtn', 'maxBtn', 'closeBtn']) { $(id).innerHTML = glyph(glyphs[id]); $(id).removeAttribute('title'); }
     $('minBtn').onclick = () => window.ipc?.postMessage('minimize');
     $('maxBtn').onclick = () => window.ipc?.postMessage('zoom');
     $('closeBtn').onclick = () => window.ipc?.postMessage('close');
@@ -2111,8 +2503,9 @@
     });
     window.__windowState = ({ maximized }) => {
       document.body.classList.toggle('maximized', maximized);
-      $('maxBtn').textContent = maximized ? '' : '';
-      $('maxBtn').title = maximized ? 'Restore' : 'Maximize';
+      if (isLinux) $('maxBtn').innerHTML = glyph(maximized ? glyphs.restore : glyphs.maxBtn);
+      else $('maxBtn').textContent = maximized ? '' : '';
+      if (!isLinux) $('maxBtn').title = maximized ? 'Restore' : 'Maximize';
     };
     window.ipc?.postMessage('frameless');
   }
@@ -2148,17 +2541,34 @@
   urlInput.addEventListener('blur', () => tabEl.classList.remove('editing'));
 
   // --- Settings: saved by the Rust side (settings.json).
-  const settings = Object.assign({ navButtons: true, theme: 'dark', discord: true, adblock: true }, window.__settings || {});
+  const settings = Object.assign({ navButtons: true, downloadButton: true, downloadUseAccount: true, downloadFolder: '', downloadTemplate: '', downloadPlaylistFolder: '', minimizeToTray: true, autoUpdate: true, theme: 'dark', discord: true, adblock: true }, window.__settings || {});
+  if (window.__appVersion) $('appVersion').textContent = `This is version ${window.__appVersion}.`;
+  $('lfmStore').textContent = isWin ? 'Windows Credential Manager' : isLinux ? 'system keyring' : 'macOS Keychain';
+  $('trayHint').hidden = !isLinux;
+  $('dlOpenFolder').onclick = () => window.ipc?.postMessage('downloads:open-folder');
+  accountRows(document.querySelector('.pocAccountsList'), 'pocAccountsItem');
+  window.__openSettings = () => toggleSettings(true); // the tray's Settings
   const darkQuery = matchMedia('(prefers-color-scheme: dark)');
   function applySettings() {
     $('navControls').classList.toggle('hidden', !settings.navButtons);
     const dark = settings.theme === 'system' ? darkQuery.matches : settings.theme !== 'light';
     document.body.classList.toggle('theme-dark', dark);
     document.body.classList.toggle('theme-light', !dark);
+    // OLED: the Electron app's themes/OLED.css, here and in framed SoundCloud pages
+    const oled = settings.theme === 'oled';
+    document.documentElement.classList.toggle('poc-oled', oled);
+    oledStyle(document, oled);
+    document.querySelectorAll('.pocEmbed').forEach(f => { try { oledStyle(f.contentDocument, oled); } catch {} });
     // Native scrollbars (Windows) and form controls follow this, ours and in framed pages.
     document.documentElement.style.colorScheme = themeName();
     document.querySelectorAll('.pocEmbed').forEach(f => { try { f.contentDocument.documentElement.style.colorScheme = themeName(); } catch {} });
     toWebi({ kind: 'set-theme', theme: themeName() });
+  }
+  function oledStyle(doc, on) {
+    if (!doc?.head) return;
+    const el = doc.getElementById('pocOled');
+    if (on && !el) doc.head.appendChild(Object.assign(doc.createElement('style'), { id: 'pocOled', textContent: window.__oledCss || '' }));
+    else if (!on) el?.remove();
   }
   darkQuery.addEventListener('change', applySettings);
   for (const el of document.querySelectorAll('[data-setting]')) {
@@ -2175,6 +2585,170 @@
     document.querySelectorAll('.pocSettings section').forEach(sec => { sec.hidden = sec.dataset.tab !== b.dataset.tab; });
   };
   const toggleSettings = force => $('settings').classList.toggle('visible', force);
+
+  // --- Downloads (downloads.rs, yt-dlp), as chrome.js has them over soundcloud.com:
+  // a button under every track, album and playlist, and the panel listing each
+  // download and, for an album or playlist, each of its tracks.
+  {
+    const post = m => window.ipc?.postMessage(m);
+    const sicon = d => `<svg width="16" height="16" viewBox="0 0 16 16"><path d="${d}" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const dlPanel = $('downloads'), dlList = dlPanel.querySelector('.pocDlList'), dlBadge = document.querySelector('#dlBtn .pocDlBadge');
+    $('dlInstall').textContent = isWin ? 'winget install yt-dlp' : isLinux ? 'from your package manager, or pip install yt-dlp' : 'brew install yt-dlp';
+    const toggleDownloads = force => {
+      dlPanel.hidden = !(force ?? dlPanel.hidden);
+      if (!dlPanel.hidden) post('downloads:get');
+    };
+    $('dlBtn').onclick = () => toggleDownloads();
+    const showDlButton = () => document.body.classList.toggle('pocNoDl', !settings.downloadButton);
+    showDlButton();
+    document.querySelectorAll('[data-setting="downloadButton"]').forEach(el => el.addEventListener('change', showDlButton));
+    const bytes = b => {
+      const u = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+      return `${b.toFixed(i === 0 || b >= 100 ? 0 : 1)} ${u[i]}`;
+    };
+    const eta = sec => { const s = Math.round(sec); return s < 60 ? `${s}s left` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s left` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m left`; };
+    const join = (...p) => p.filter(Boolean).join(' · ');
+    const isActive = it => ['queued', 'downloading', 'processing'].includes(it.status);
+    const make = (tag, cls, text) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: text } : {});
+    const lowBadge = q => q?.low ? make('span', 'pocDlLow', 'Low quality') : '';
+    const trackState = t => ({
+      waiting: 'Waiting', skipped: t.reason, failed: t.reason || 'Failed',
+      downloading: t.total ? `${Math.round(100 * (t.downloaded || 0) / t.total)}%` : 'Starting…',
+      done: join(t.size ? bytes(t.size) : '', t.quality?.label),
+    })[t.status] || t.status;
+    const expanded = new Set();
+    let lastItems = [];
+    window.__downloads = items => {
+      lastItems = items;
+      const running = items.filter(isActive).length;
+      dlBadge.hidden = !running;
+      dlBadge.textContent = running;
+      dlList.replaceChildren(...items.map(it => {
+        const row = make('div', `pocDlRow ${it.status}`);
+        row.dataset.id = it.id;
+        const head = row.appendChild(make('div', 'pocDlHead'));
+        const many = it.tracks.length > 1;
+        if (many) {
+          const open = expanded.has(it.id);
+          const arrow = head.appendChild(make('button', open ? 'pocDlArrow open' : 'pocDlArrow'));
+          arrow.innerHTML = sicon('M6 3.5 10.5 8 6 12.5');
+          Object.assign(arrow, { title: open ? 'Hide the tracks' : 'Show every track' });
+          arrow.dataset.dl = 'expand';
+        }
+        head.appendChild(make('div', 'pocDlTitle', it.title)).title = it.title;
+        const file = it.tracks.some(t => t.hasFile);
+        if (isActive(it) || file) head.appendChild(make('button', '', isActive(it) ? 'Cancel' : 'Show')).dataset.dl = isActive(it) ? 'cancel' : 'show';
+        const done = it.tracks.filter(t => t.status === 'done'), cur = it.tracks.find(t => t.status === 'downloading');
+        if (isActive(it)) {
+          const progress = row.appendChild(make('progress'));
+          const frac = cur?.total ? (cur.downloaded || 0) / cur.total : 0;
+          if (it.tracks.length && (cur?.total || done.length)) progress.value = (done.length + frac) / it.tracks.length;
+        }
+        const skipped = it.tracks.filter(t => t.status === 'skipped' || t.status === 'failed');
+        const low = done.filter(t => t.quality?.low).length;
+        const size = done.reduce((n, t) => n + (t.size || 0), 0);
+        const detail = row.appendChild(make('div', 'pocDlDetail'));
+        if (it.status === 'queued') detail.textContent = 'Waiting…';
+        else if (it.status === 'downloading') detail.textContent = join(many && cur ? `Track ${it.tracks.indexOf(cur) + 1} of ${it.tracks.length}` : '',
+          cur?.downloaded != null ? (cur.total ? `${bytes(cur.downloaded)} of ${bytes(cur.total)}` : bytes(cur.downloaded)) : 'Starting…',
+          it.speed ? `${bytes(it.speed)}/s` : '', it.eta != null ? eta(it.eta) : '');
+        else if (it.status === 'processing') detail.textContent = 'Finishing…';
+        else if (it.status === 'done') {
+          detail.textContent = join('Done', many ? `${done.length} of ${it.tracks.length} tracks` : '', size ? bytes(size) : '', !many ? done[0]?.quality?.label : '',
+            many && low ? `${low} in low quality` : '', skipped.length ? `${skipped.length} skipped (${[...new Set(skipped.map(t => t.reason))].join(', ')})` : '');
+          if (!many) detail.append(lowBadge(done[0]?.quality));
+        } else detail.textContent = it.status === 'cancelled' ? 'Cancelled' : it.error || 'Failed';
+        if (many && expanded.has(it.id)) {
+          const ol = row.appendChild(make('ol', 'pocDlTracks'));
+          it.tracks.forEach((t, n) => {
+            const li = ol.appendChild(make('li', `pocDlTrack ${t.status}`));
+            li.append(make('span', 'n', n + 1), Object.assign(make('span', 't', t.title), { title: t.title }));
+            const st = li.appendChild(make('span', 's', trackState(t)));
+            st.append(lowBadge(t.quality));
+            if (t.status === 'downloading' && t.total) li.appendChild(make('progress')).value = (t.downloaded || 0) / t.total;
+            if (t.hasFile) Object.assign(li.appendChild(make('button', 'show', 'Show')), { title: 'Show in folder' }).dataset.dl = 'show:' + n;
+          });
+        }
+        return row;
+      }));
+    };
+    // pointerdown: the list is redrawn several times a second, which would
+    // swallow a click whose press and release land on different redraws
+    dlPanel.addEventListener('pointerdown', e => {
+      const b = e.target.closest('[data-dl]');
+      if (!b || e.button !== 0) return;
+      e.preventDefault();
+      const [what, track] = b.dataset.dl.split(':'), id = Number(b.closest('.pocDlRow')?.dataset.id);
+      if (what === 'close') return toggleDownloads(false);
+      if (what === 'expand') { expanded.has(id) ? expanded.delete(id) : expanded.add(id); return window.__downloads(lastItems); }
+      post(['downloads', what, ...(id ? [id] : []), ...(track ? [track] : [])].join(':'));
+    });
+    for (const t of ['keydown', 'keypress', 'keyup']) dlPanel.addEventListener(t, e => e.stopPropagation());
+
+    const DL_ICON = sicon('M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.25h10');
+    // Every title of an album or playlist up front (the API's playlist has the
+    // full track only for the first few).
+    const describe = async url => {
+      const o = await api('/resolve', { url });
+      const name = t => [t.user?.username, t.title].filter(Boolean).join(' - ');
+      if (o.kind !== 'playlist') return { title: name(o), tracks: [{ id: o.id, title: name(o) }] };
+      const full = new Map(o.tracks.filter(t => t.title).map(t => [t.id, t]));
+      const missing = o.tracks.filter(t => !t.title).map(t => t.id);
+      for (let i = 0; i < missing.length; i += 50) for (const t of await api('/tracks', { ids: missing.slice(i, i + 50).join(',') })) full.set(t.id, t);
+      // within an album or playlist, the uploader only for tracks by someone else
+      const own = t => t.user?.id === o.user?.id ? t.title : name(t);
+      return { title: name(o), tracks: o.tracks.map((t, n) => ({ id: t.id, title: full.has(t.id) ? own(full.get(t.id)) : `Track ${n + 1}` })) };
+    };
+    const startDownload = async url => {
+      url = url.split(/[?#]/)[0];
+      toggleDownloads(true);
+      const info = await describe(url).catch(() => ({ title: '', tracks: [] }));
+      post('download:' + JSON.stringify({ url, token: settings.downloadUseAccount === false ? '' : token || '', ...info }));
+    };
+    const addDownloadButtons = () => {
+      if (!settings.downloadButton) {
+        // switched off: none in a track page's frame either
+        try { document.querySelector('.pocEmbed')?.contentDocument?.querySelectorAll('.pocDownload').forEach(b => b.remove()); } catch {}
+        return;
+      }
+      for (const actions of document.querySelectorAll('.soundActions:not(:has(.pocDownload))')) {
+        const size = actions.classList.contains('soundActions__small') ? 'small' : 'medium';
+        const b = Object.assign(document.createElement('button'), { type: 'button', title: 'Download', className: `pocDownload sc-button-secondary sc-button sc-button-${size} sc-button-icon sc-button-responsive` });
+        b.setAttribute('aria-label', 'Download');
+        b.innerHTML = `<div>${DL_ICON}</div>`;
+        b.addEventListener('click', e => {
+          e.preventDefault(); e.stopPropagation();
+          // the row it sits in, else the page it heads (a playlist's own actions)
+          const link = b.closest('.sound, .soundBadge, .trackItem')?.querySelector('a.soundTitle__title, a.trackItem__trackTitle');
+          const url = link?.href || 'https://soundcloud.com/' + pathNow().split('?')[0];
+          startDownload(url);
+        });
+        (actions.querySelector('.sc-button-group') || actions).append(b);
+      }
+      // Track pages are SoundCloud's /n/ frame with its own action row: a copy
+      // of its "Add to playlist" button (styles, not handlers) after it.
+      const f = document.querySelector('.pocEmbed'), d = (() => { try { return f?.contentDocument; } catch { return null; } })();
+      const add = d && !d.querySelector('.pocDownload') && d.querySelector('button[aria-label="Add to playlist"]');
+      if (add && /^[^/]+\/[^/?]+(\?|$)/.test(pathNow())) {
+        const wrap = add.parentElement.children.length === 1 ? add.parentElement : add;
+        const copy = wrap.cloneNode(true), b = copy.matches('button') ? copy : copy.querySelector('button');
+        b.classList.add('pocDownload');
+        b.setAttribute('aria-label', 'Download');
+        b.title = 'Download';
+        const svg = b.querySelector('svg');
+        if (svg) svg.outerHTML = DL_ICON.replace(/width="16" height="16"/, `width="${svg.getAttribute('width') || 16}" height="${svg.getAttribute('height') || 16}"`);
+        b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); startDownload('https://soundcloud.com/' + pathNow()); });
+        wrap.after(copy);
+      }
+    };
+    let queued = false;
+    // (a timer, not requestAnimationFrame, which waits while the window is hidden)
+    new MutationObserver(() => { if (!queued) { queued = true; setTimeout(() => { queued = false; addDownloadButtons(); }, 100); } }).observe($('content'), { childList: true, subtree: true });
+    // Note: polls a track page's frame each second (its DOM isn't under the observer).
+    setInterval(() => { if (document.querySelector('.pocEmbed')) addDownloadButtons(); }, 1000);
+  }
 
   // Last.fm: the Rust side signs in (browser approval) and scrobbles.
   let lastfm = window.__lastfm || { connected: false };
@@ -2225,6 +2799,39 @@
 
   paintPlayState(); paintVolume();
 
+  // --- Page scrollbar from under our bar to above the player; shows while
+  // scrolling or hovered, as an overlay scrollbar would, and drags (as chrome.js).
+  {
+    const thumb = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'pocScroll' }));
+    let fade;
+    const scrollGeometry = () => {
+      const player = $('playControls');
+      const bottom = player ? Math.max(0, innerHeight - player.getBoundingClientRect().top) : 0;
+      const track = innerHeight - 32 - bottom, total = document.documentElement.scrollHeight;
+      const size = Math.max(32, track * innerHeight / total);
+      return { track, size, max: total - innerHeight };
+    };
+    const drawScroll = flash => {
+      const { track, size, max } = scrollGeometry();
+      thumb.style.display = max > 1 && track > size ? 'block' : 'none';
+      thumb.style.top = 32 + (track - size) * Math.min(1, scrollY / max) + 'px';
+      thumb.style.height = size + 'px';
+      if (flash === true) { thumb.classList.add('on'); clearTimeout(fade); fade = setTimeout(() => thumb.classList.remove('on'), 1000); }
+    };
+    addEventListener('scroll', () => drawScroll(true), { passive: true });
+    addEventListener('resize', drawScroll);
+    new ResizeObserver(() => drawScroll()).observe(document.body);
+    thumb.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      thumb.setPointerCapture(e.pointerId);
+      thumb.classList.add('drag');
+      const { track, size, max } = scrollGeometry(), y0 = e.clientY, s0 = scrollY;
+      const move = m => scrollTo(scrollX, s0 + (m.clientY - y0) * max / (track - size));
+      thumb.addEventListener('pointermove', move);
+      thumb.addEventListener('pointerup', () => { thumb.removeEventListener('pointermove', move); thumb.classList.remove('drag'); }, { once: true });
+    });
+  }
+
   // Download progress from the Rust side, shown over the player bar.
   window.__downloadStatus = msg => {
     const t = $('pocToast') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'pocToast', className: 'pocToast', role: 'status' }));
@@ -2233,25 +2840,23 @@
     t.hideTimer = setTimeout(() => t.remove(), /…$/.test(msg) ? 60000 : 5000);
   };
 
-  // A sidebar taller than the window would never show its end with a fixed
-  // top, so the top is the room left (negative when it doesn't fit).
-  const pinSidebars = () => document.querySelectorAll('.l-sidebar-right .streamSidebar, .l-sidebar-right .userSidebar').forEach(el => {
-    el.style.top = Math.min(90, innerHeight - $('playControls').offsetHeight - el.offsetHeight - 16) + 'px';
-  });
-  addEventListener('scroll', pinSidebars, { passive: true });
-  addEventListener('resize', pinSidebars);
 
   // For stdin-driven tests.
   window.__poc = { api, play, seekTo, go, render, audio, toggleLike, toggleFollow, toggleQueue, toggleSettings, settings, cleanLink, copyLink, addNext, LINK_CHECKS, get order() { return order; }, get pos() { return pos; }, get playingCtx() { return playingCtx; }, get upNext() { return upNext; }, get queue() { return queue; }, get current() { return current(); } };
 
   (async () => {
     applyAssets(store.get('assets'));
+    // SoundCloud's stylesheets before anything is shown, the sign-in page too
+    // (a first launch, signed out, has none stored yet)
+    await refreshFromSite().catch(e => log('asset refresh failed: ' + e.message));
     if (!token) return go('signin');
-    if (!clientId || !store.get('assets')) await refreshFromSite();
-    else await refreshFromSite().catch(e => log('asset refresh failed: ' + e.message));
     const version = HARVEST_REV + ' ' + (store.get('assets')?.css || []).join(' ');
     if (window.__scStylesVersion !== version || !ICONS.play) harvest(version).catch(e => log('harvest failed: ' + e.message));
     me = await api('/me');
+    // the account list shows its name and avatar
+    const mine = { name: me.username, avatar: me.avatar_url || '' };
+    Object.assign(accounts.accounts.find(a => a.id === accounts.current) || {}, mine);
+    window.ipc?.postMessage('account:me:' + JSON.stringify(mine));
     $('meAvatar').style.backgroundImage = `url(${me.avatar_url})`;
     $('headerRight').style.display = ''; // hidden until signed in
     allIds('/me/track_likes/ids').then(ids => { ids.forEach(id => likedIds.add(id)); paintSocial(); }).catch(e => log('like ids: ' + e.message));

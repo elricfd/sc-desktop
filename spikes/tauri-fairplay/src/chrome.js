@@ -107,6 +107,11 @@
     .pocTitlebar .pocSearch input { flex: 1; min-width: 0; height: auto; margin: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; }
     .pocTitlebar .pocSearch svg { flex: none; opacity: .6; }
     .pocTitlebar .pocSearch { position: relative; }
+    /* WebKitGTK draws a type=search field as its own box, clear button and focus ring: ours is the only box */
+    .pocTitlebar .pocSearch input { -webkit-appearance: none; appearance: none; box-shadow: none; }
+    .pocTitlebar .pocSearch input:focus { outline: none; box-shadow: none; }
+    .pocTitlebar .pocSearch input::-webkit-search-cancel-button, .pocTitlebar .pocSearch input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+    html.poc-nodl .pocDownload { display: none !important; }
     .pocSuggest { display: none; position: absolute; top: 28px; right: 0; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 4px 0; border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; background: #1a1a1a; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); font: 13px Söhne, system-ui, -apple-system, 'Segoe UI', sans-serif; /* SoundCloud's own font */ cursor: default; }
     html.poc-oled .pocSuggest { background: #000; }
     html.theme-light .pocSuggest { border-color: rgba(0, 0, 0, .12); background: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
@@ -279,8 +284,8 @@
         <section data-tab="downloads" hidden><h2>Downloads</h2>
           <label class="field"><span>Folder</span><input class="textInput" data-setting="downloadFolder" placeholder="Your Downloads folder" spellcheck="false"></label>
           <div class="buttons"><button class="btn" data-dl-open>Open folder</button></div>
-          <label class="row"><span>Downloads button</span><span class="toggle"><input type="checkbox" data-setting="downloadButton"><span class="slider"></span></span></label>
-          <p class="hint">Off hides it from the window bar; the panel still opens when a download starts.</p>
+          <label class="row"><span>Download buttons</span><span class="toggle"><input type="checkbox" data-setting="downloadButton"><span class="slider"></span></span></label>
+          <p class="hint">Off hides them under tracks, albums and playlists and in the window bar.</p>
           <label class="row"><span>Download with my account</span><span class="toggle"><input type="checkbox" data-setting="downloadUseAccount"><span class="slider"></span></span></label>
           <p class="hint">Signed in, Go+ tracks download in full; off, they come as 30-second previews.</p>
           <label class="field"><span>File name</span><input class="textInput" data-setting="downloadTemplate" placeholder="%(uploader)s - %(title)s.%(ext)s" spellcheck="false"></label>
@@ -483,7 +488,8 @@
       document.documentElement.classList.add('platform-win');
       document.documentElement.classList.toggle('host-frame', !!window.__hostFrame);
       const glyphs = { minimize: 'M3.5 8h9', maximize: 'M4 4h8v8H4z', restore: 'M4 6h6v6H4zM6 6V4h6v6h-2', close: 'M12 4L4 12m8 0L4 4' };
-      if (isLinux) for (const k of ['minimize', 'maximize', 'close']) $('.' + k).innerHTML = icon(glyphs[k]);
+      // (no tooltips on Linux: its own window buttons have none)
+      if (isLinux) for (const k of ['minimize', 'maximize', 'close']) { $('.' + k).innerHTML = icon(glyphs[k]); $('.' + k).removeAttribute('title'); }
       $('.minimize').onclick = () => post('minimize');
       $('.maximize').onclick = () => post('zoom');
       $('.close').onclick = () => post('close');
@@ -494,7 +500,7 @@
         document.documentElement.classList.toggle('maximized', maximized);
         if (isLinux) $('.maximize').innerHTML = icon(maximized ? glyphs.restore : glyphs.maximize);
         else $('.maximize').textContent = maximized ? '' : '';
-        $('.maximize').title = maximized ? 'Restore' : 'Maximize';
+        if (!isLinux) $('.maximize').title = maximized ? 'Restore' : 'Maximize';
       };
       post('frameless');
     }
@@ -638,7 +644,8 @@
     const darkQuery = matchMedia('(prefers-color-scheme: dark)');
     function applySettings() {
       $('.navigation-controls').classList.toggle('hidden', !settings.navButtons);
-      $('.pocDlBtn').hidden = !settings.downloadButton; // the panel still opens when a download starts
+      $('.pocDlBtn').hidden = !settings.downloadButton;
+      document.documentElement.classList.toggle('poc-nodl', !settings.downloadButton);
       const dark = settings.theme === 'system' ? darkQuery.matches : settings.theme !== 'light';
       const oled = settings.theme === 'oled';
       document.documentElement.classList.toggle('poc-oled', oled);
@@ -791,6 +798,11 @@
       post('download:' + JSON.stringify({ url, token, ...info }));
     };
     const addDownloadButtons = () => {
+      if (!settings.downloadButton) {
+        // switched off: none in the track page's frame either
+        document.querySelector('.webiIframe')?.contentDocument?.querySelectorAll('.pocDownload').forEach(b => b.remove());
+        return;
+      }
       for (const actions of document.querySelectorAll('.soundActions:not(:has(.pocDownload))')) {
         const size = actions.classList.contains('soundActions__small') ? 'small' : 'medium';
         const b = Object.assign(document.createElement('button'), { type: 'button', title: 'Download', className: `pocDownload sc-button-secondary sc-button sc-button-${size} sc-button-icon sc-button-responsive` });

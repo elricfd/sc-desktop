@@ -13,7 +13,7 @@ a free track and 570 MB once Go+ has played, against 700+ MB for the Electron ap
 downloaded (Chrome, Helium, Brave, Vivaldi, Edge or Firefox; `WIDEVINE_CDM_BLOB` points at one). Build those pieces once
 with `linux-drm/build.sh` (needs meson, ninja, `gstreamer1-devel`, `gstreamer1-plugins-base-devel` and
 `libuuid-devel`); `SC_DRM_DIR` points at a build elsewhere. `./install-linux.sh` builds and installs it all for
-you under `~/.local/opt/soundcloud-rust`, with a "SoundCloud (Rust)" launcher that opens the custom UI. Without a
+you under `~/.local/opt/soundcloud-rust`, with a "SoundCloud" launcher that opens the custom UI. Without a
 tray (GNOME needs an AppIndicator extension), closing the window quits instead of hiding it. That runs Google's Widevine library outside a browser, which
 is fine for trying on your own machine but not something to ship. With soundcloud.com in the window (the default), Go+
 doesn't play on Linux. `ENGINE=browser` shows SoundCloud in an installed Chromium-family browser's own app window

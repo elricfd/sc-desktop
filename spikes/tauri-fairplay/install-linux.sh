@@ -12,12 +12,14 @@ cargo build --release
 install -Dm755 target/release/fairplay-spike "$prefix/bin/fairplay-spike"
 # the app looks for it beside bin/; its libraries find each other by rpath
 linux-drm/build.sh "$prefix/linux-drm"
-install -Dm644 src/icons/app.png "$share/icons/hicolor/512x512/apps/soundcloud-rust.png"
+# the Electron app's icon, as its SVG
+install -Dm644 ../../assets/icons/soundcloud.svg "$share/icons/hicolor/scalable/apps/soundcloud-rust.svg"
+rm -f "$share/icons/hicolor/512x512/apps/soundcloud-rust.png"
 mkdir -p "$share/applications"
 cat > "$share/applications/soundcloud-rust.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=SoundCloud (Rust)
+Name=SoundCloud
 Comment=SoundCloud in the Rust client, with Go+
 Exec=env UI=custom $prefix/bin/fairplay-spike
 Icon=soundcloud-rust
@@ -26,4 +28,4 @@ StartupWMClass=fairplay-spike
 Terminal=false
 EOF
 update-desktop-database "$share/applications" 2>/dev/null || true
-echo "Installed into $prefix; open SoundCloud (Rust) from the app grid."
+echo "Installed into $prefix; open SoundCloud from the app grid."
