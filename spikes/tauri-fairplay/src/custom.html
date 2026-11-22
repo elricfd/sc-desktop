@@ -37,6 +37,31 @@
   .moreActions .moreActions__button.sc-button { display: flex; align-items: center; justify-content: flex-start; }
   /* Share modal (SoundCloud's share panel isn't on the collected pages). */
   .pocShare { display: flex; gap: 8px; align-items: center; }
+  /* Edit playlist, laid out as soundcloud.com's: cover left, fields right, paired rows */
+  .pocEdit__basic { display: flex; gap: 24px; }
+  .pocEdit__cover { width: 260px; height: 260px; flex: none; background: #333 center/cover; }
+  .pocEdit__fields { flex: 1; min-width: 0; }
+  .pocEdit__pair { display: flex; gap: 16px; }
+  .pocEdit__pair > * { flex: 1; min-width: 0; }
+  .pocEdit .textfield__label, .pocEdit .textfield__label > span, .pocEdit .textfield__inputWrapper { display: block; width: 100%; }
+  .pocEdit .textfield__label > span { margin-bottom: 4px; }
+  .pocEdit select, .pocEdit textarea, .pocEdit input:not([type=radio]) { display: block; width: 100%; box-sizing: border-box; }
+  .pocEdit select { height: auto; padding: 6px 8px; line-height: 20px; color: inherit; }
+  .pocEdit textarea { height: auto; min-height: 96px; resize: vertical; font: inherit; }
+  .pocEdit__permalink { display: flex; align-items: center; gap: 2px; }
+  .pocEdit__permalink > span { white-space: nowrap; color: var(--secondary-color, #999); }
+  .pocEdit__required { color: #f50; }
+  .pocEdit__privacy { display: flex; gap: 16px; align-items: center; }
+  .pocEdit__privacy label { display: flex; align-items: center; gap: 6px; }
+  .pocEdit__privacy input { margin: 0; }
+  .pocEdit__tracks { max-height: 50vh; overflow: auto; user-select: none; }
+  .pocEdit__tracks li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(128, 128, 128, .25); cursor: grab; }
+  .pocEdit__tracks li.pocDragging { cursor: grabbing; background: rgba(128, 128, 128, .15); }
+  .pocEdit__tracks .pocEdit__n { width: 2em; text-align: right; color: var(--secondary-color, #999); }
+  .pocEdit__tracks .pocEdit__art { width: 30px; height: 30px; flex: none; background: #333 center/cover; }
+  .pocEdit__tracks .pocEdit__name { flex: 1; min-width: 0; }
+  .pocEdit__footer { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 16px 0 24px; }
+  .pocEdit__msg { margin-right: auto; }
   .pocShare input[readonly] { flex: 1; min-width: 0; }
   .pocShare__at { display: flex; gap: 6px; align-items: center; cursor: pointer; }
   /* SoundCloud's own pages we don't rebuild (Upload, Settings, …), framed in our
@@ -99,6 +124,8 @@
   /* playlist page: until the harvested GO+ badge is there, a drawn one */
   /* the hero's artist label boxed like its title (both are shrinkwrap labels) */
   .fullHero .soundTitle__username.g-type-shrinkwrap-inline { display: -webkit-inline-box; padding: 4px 8px; }
+  /* SoundCloud's pointer comes from .soundTitle.m-interactive and .waveform, which the playlist hero lacks */
+  .fullHero .sc-button-play, canvas[data-hero] { cursor: pointer; }
   /* the playing row of a playlist, as SoundCloud colours it */
   .trackItem.active .trackItem__trackTitle, .trackItem.active .trackItem__number { color: #f50 !important; }
   .pocGoPlus { display: inline-block; padding: 1px 5px; border-radius: 3px; background: linear-gradient(90deg, #ff4d73, #d81b60); color: #fff; font: 700 11px/16px sans-serif; vertical-align: middle; }
@@ -1280,6 +1307,7 @@
           ${action('sc-button-like' + (liked ? ' sc-button-selected' : ''), `data-${SOCIAL_ATTR[p.kind] || 'plike'}="${esc(sys ? p.urn : p.id)}"`, 'soundLike', liked ? 'Unlike' : 'Like')}
           ${sys ? '' : action('sc-button-repost' + (reposted ? ' sc-button-selected' : ''), `data-prepost="${p.id}"`, 'repost', reposted ? 'Unpost' : 'Repost')}
           ${action('sc-button-copylink', `data-copy="${esc(p.permalink_url)}"`, 'copylink', 'Copy Link')}
+          ${!sys && u.id === me?.id ? `<button type="button" id="setEdit" class="sc-button-edit sc-button-secondary sc-button sc-button-medium sc-button-responsive" title="Edit"><div>${icon('edit')}</div><span class="sc-button-label">Edit</span></button>` : ''}
           ${action('sc-button-more', `data-more="${esc(remember(p))}" aria-haspopup="true"`, 'more', 'More')}</div></div>
         ${sys ? '' : `<ul class="soundStats sc-ministats-group listenEngagement__stats sc-ministats-group-right">${stat('sc-ministats-likes', 'likes', p.likes_count, 'likes', path + '/likes')}${stat('sc-ministats-reposts', 'reposts', p.reposts_count, 'reposts', path + '/reposts')}</ul>`}
       </div></div></div></div>
@@ -1295,13 +1323,14 @@
         </div></div></div></div></div>
       <div class="l-sidebar-right" id="setSidebar"></div></div>`;
     $('setPlay').onclick = () => pairs[0] && toggleOrPlay(pairs[0][1]);
+    $('setEdit')?.addEventListener('click', () => openEditPlaylist(p, tracks, cover));
     $('plist').append(...pairs.map(([t, i], n) => {
       const li = document.createElement('li');
       li.className = 'trackList__item sc-border-light-bottom sc-px-2x';
       li.dataset.i = i;
       const own = t.user?.id === u.id, liked = likedIds.has(t.id), reposted = repostedIds.has(t.id);
       const small = (cls, attrs, ic, label) => `<button type="button" ${attrs} class="${cls} sc-button-secondary sc-button sc-button-small sc-button-icon sc-button-responsive" title="${esc(label)}" aria-label="${esc(label)}"><div>${icon(ic)}</div><span class="sc-button-label sc-visuallyhidden">${esc(label)}</span></button>`;
-      li.innerHTML = `<div class="trackItem g-flex-row sc-type-small sc-text-body sc-type-light sc-text-secondary m-interactive"><div class="trackItem__image sc-py-1x sc-mr-2x"><div class="image image__lightOutline sc-artwork-4x sc-artwork m-loaded">${artSpan(art(t, 't120x120'), 'sc-artwork-4x')}</div>
+      li.innerHTML = `<div class="trackItem g-flex-row sc-type-small sc-text-body sc-type-light sc-text-secondary m-interactive m-playable"><div class="trackItem__image sc-py-1x sc-mr-2x"><div class="image image__lightOutline sc-artwork-4x sc-artwork m-loaded">${artSpan(art(t, 't120x120'), 'sc-artwork-4x')}</div>
           <div class="trackItem__play"><a role="button" class="sc-button-play playButton sc-button sc-button-small" title="Play"><div><div class="pocPlayIcon">${icon('tilePlay')}</div></div></a></div></div>
         <div class="trackItem__numberWrapper"><span class="trackItem__number sc-font sc-mr-0.75x"><span class="trackItem__separator sc-text-secondary sc-mr-0.25x">${n + 1}</span> · </span></div>
         <div class="trackItem__content sc-truncate">${own ? '' : link(t.user?.permalink, 'trackItem__username sc-link-light sc-link-secondary sc-mr-0.5x', esc(t.user?.username) + ' -')}${link(trackPath(t) + '?in=' + path, 'trackItem__trackTitle sc-link-primary', esc(t.title))}</div>
@@ -1313,11 +1342,17 @@
             ${small('sc-button-copylink', `data-copy="${esc(t.permalink_url)}"`, 'copylink', 'Copy Link')}
             ${small('sc-button-more', `data-more="${esc(remember(t))}" data-short="1" aria-haspopup="true"`, 'more', 'More')}</div></div></div></div></div>`;
       li.querySelector('.trackItem__image').onclick = () => toggleOrPlay(i);
+      // SoundCloud's CSS shows a row's play button and actions on a .hover class its script sets
+      const row = li.firstElementChild;
+      li.onmouseenter = () => row.classList.add('hover');
+      li.onmouseleave = () => row.classList.remove('hover');
       return li;
     }));
     markPlaying();
     heroGradient(cover, $('setGradient'));
-    { const c = document.querySelector('canvas[data-hero]'), cur = current(), at = pairs.find(([t]) => t.id === cur?.id); if (at) { c.closest('.fullHero').classList.remove('m-showTracksSummary'); drawWave(at[0], at[1], audio.duration ? audio.currentTime / audio.duration : 0, c); } }
+    { const c = document.querySelector('canvas[data-hero]'), cur = current(), at = pairs.find(([t]) => t.id === cur?.id); if (at) { c.closest('.fullHero').classList.remove('m-showTracksSummary'); drawWave(at[0], at[1], audio.duration ? audio.currentTime / audio.duration : 0, c); }
+      // it only shows while one of the playlist's tracks plays: a click seeks that track
+      c.onclick = e => { if (pairs.some(([t]) => t.id === current()?.id)) seekTo(e.offsetX / c.clientWidth); }; }
     // the uploader, and the sidebar: their albums, who liked and reposted it
     if (!sys && u.id) {
       api('/users/' + u.id).then(full => {
@@ -1900,12 +1935,12 @@
   // --- Modals (Share, Add to Playlist) in SoundCloud's modal shell.
   let modalEl = null;
   function closeModal() { modalEl?.remove(); modalEl = null; }
-  function openModal(tabs, body) {
+  function openModal(tabs, body, width = 550) {
     closeModal();
     modalEl = document.createElement('div');
     modalEl.className = 'modal g-z-index-modal-background g-opacity-transition g-z-index-overlay modalWhiteout showBackground';
     modalEl.innerHTML = `<button type="button" title="Close" class="modal__closeButton sc-button sc-button-secondary sc-button-large sc-button-icon"><div>${icon('close')}</div><span class="sc-visuallyhidden">Close</span></button>
-      <div class="modal__modal sc-border-box g-z-index-modal-content" style="width:550px;left:${Math.max(16, (innerWidth - 550) / 2)}px;margin-top:76px;height:auto"><div class="modal__content"><div class="tabs"><div class="tabs__tabs"><ul class="g-tabs g-tabs-large">${tabs.map((t, k) => `<li class="g-tabs-item"><a class="tabs__tab g-tabs-link${k ? '' : ' active'}">${t}</a></li>`).join('')}</ul></div>
+      <div class="modal__modal sc-border-box g-z-index-modal-content" style="width:${width}px;max-width:calc(100vw - 32px);left:${Math.max(16, (innerWidth - width) / 2)}px;margin-top:76px;height:auto"><div class="modal__content"><div class="tabs"><div class="tabs__tabs"><ul class="g-tabs g-tabs-large">${tabs.map((t, k) => `<li class="g-tabs-item"><a class="tabs__tab g-tabs-link${k ? '' : ' active'}">${t}</a></li>`).join('')}</ul></div>
       <div class="tabs__content"><div class="tabs__contentSlot" style="display:block">${body}</div></div></div></div></div>`;
     modalEl.onclick = e => { if (e.target === modalEl || e.target.closest('.modal__closeButton')) closeModal(); };
     document.body.append(modalEl);
@@ -1957,6 +1992,95 @@
         b.closest('li').querySelector('.addToPlaylistItem__count').textContent = next.length;
       } catch (err) { status('Error: ' + err.message); }
       b.disabled = false;
+    };
+  }
+
+  // Edit playlist: soundcloud.com's dialog, its Basic info and Tracks tabs.
+  // Saving PUTs only what changed, as Add to Playlist does ({playlist: {...}}).
+  // ponytail: the cover is shown, not replaceable (that's a multipart upload); add when wanted.
+  function openEditPlaylist(p, tracks, cover) {
+    const full = new Map(tracks.map(t => [t.id, t]));
+    // every id the playlist holds, including ones the page couldn't load, so saving never drops them
+    const startIds = (p.tracks || []).map(t => t.id);
+    const day = (p.release_date || '').slice(0, 10);
+    const was = { title: p.title || '', permalink: p.permalink || '', set_type: p.set_type || '', release_date: day, genre: p.genre || '', tag_list: p.tag_list || '', description: p.description || '', sharing: p.sharing || 'public' };
+    const types = [['', 'Playlist'], ['album', 'Album'], ['ep', 'EP'], ['single', 'Single'], ['compilation', 'Compilation']];
+    const input = 'textfield__input sc-input sc-input-medium';
+    const field = (label, inner, req) => `<div class="textfield sc-mb-2x"><label class="textfield__label sc-type-small sc-text-h4"><span>${label}${req ? ' <span class="pocEdit__required">*</span>' : ''}</span><div class="textfield__inputWrapper">${inner}</div></label></div>`;
+    const row = id => {
+      const t = full.get(id);
+      return `<li data-id="${id}"><span class="pocEdit__n"></span><span class="pocEdit__art" style="background-image:url(${esc(t ? art(t, 't50x50') : '')})"></span>
+        <span class="pocEdit__name sc-truncate sc-text-h4">${t ? `<span class="sc-text-secondary">${esc(t.user?.username)} – </span>${esc(t.title)}` : '<span class="sc-text-secondary">Unavailable track</span>'}</span>
+        <button type="button" data-remove class="sc-button sc-button-secondary sc-button-small sc-button-icon" title="Remove from playlist" aria-label="Remove from playlist"><div>${icon('close')}</div></button></li>`;
+    };
+    const m = openModal(['Basic info', 'Tracks'], `<form class="pocEdit">
+      <section class="g-modal-section sc-clearfix sc-pt-3x" data-pane><div class="pocEdit__basic">
+        <div class="pocEdit__cover" style="background-image:url(${esc(cover)})"></div>
+        <div class="pocEdit__fields">
+          ${field('Title', `<input name="title" class="${input}" required maxlength="100" value="${esc(was.title)}">`, true)}
+          ${field('Permalink', `<div class="pocEdit__permalink"><span>soundcloud.com/${esc(p.user?.permalink)}/sets/</span><input name="permalink" class="${input}" required pattern="[a-z0-9_\-]+" title="Lowercase letters, numbers, - and _" value="${esc(was.permalink)}"></div>`, true)}
+          <div class="pocEdit__pair">
+            ${field('Playlist type', `<select name="set_type" class="${input}">${types.map(([v, l]) => `<option value="${v}"${was.set_type === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`)}
+            ${field('Release date', `<input name="release_date" type="date" class="${input}" value="${esc(day)}">`)}</div>
+          <div class="pocEdit__pair">
+            ${field('Genre', `<input name="genre" class="${input}" value="${esc(was.genre)}">`)}
+            ${field('Additional tags', `<input name="tag_list" class="${input}" value="${esc(was.tag_list)}" placeholder="Separate with spaces; &quot;quote&quot; multi-word tags">`)}</div>
+          ${field('Description', `<textarea name="description" rows="4" class="${input}" placeholder="Describe your playlist">${esc(was.description)}</textarea>`)}
+          <div class="pocEdit__privacy sc-text-h4"><span>Privacy:</span>
+            <label class="sc-radio"><input type="radio" name="sharing" value="public"${was.sharing !== 'private' ? ' checked' : ''}> Public</label>
+            <label class="sc-radio"><input type="radio" name="sharing" value="private"${was.sharing === 'private' ? ' checked' : ''}> Private</label></div>
+        </div></div>
+      </section>
+      <section class="g-modal-section sc-clearfix sc-pt-3x" data-pane hidden><p class="sc-text-secondary sc-type-small sc-mb-1x">Drag tracks to reorder them.</p><ul class="pocEdit__tracks sc-list-nostyle">${startIds.map(row).join('')}</ul></section>
+      <div class="pocEdit__footer"><span class="pocEdit__msg sc-text-secondary sc-type-small"><span class="pocEdit__required">*</span> Required fields</span>
+        <button type="button" data-cancel class="sc-button sc-button-secondary sc-button-medium">Cancel</button>
+        <button type="submit" class="sc-button sc-button-cta sc-button-primary sc-button-medium">Save changes</button></div></form>`, 800);
+    const form = m.querySelector('form'), list = m.querySelector('.pocEdit__tracks'), msg = m.querySelector('.pocEdit__msg');
+    const tabs = m.querySelectorAll('.tabs__tab'), panes = m.querySelectorAll('[data-pane]');
+    tabs.forEach((a, k) => a.onclick = () => { tabs.forEach((b, j) => b.classList.toggle('active', j === k)); panes.forEach((x, j) => x.hidden = j !== k); });
+    const number = () => [...list.children].forEach((li, k) => li.querySelector('.pocEdit__n').textContent = k + 1);
+    number();
+    list.onclick = e => { const b = e.target.closest('[data-remove]'); if (b) { b.closest('li').remove(); number(); } };
+    // Reordering moves the row itself under the pointer (WebKitGTK's drag image draws the row's text huge).
+    let dragged = null;
+    list.onpointerdown = e => {
+      const li = e.target.closest('li');
+      if (!li || e.button || e.target.closest('button')) return;
+      dragged = li; li.classList.add('pocDragging');
+      list.setPointerCapture(e.pointerId); e.preventDefault();
+    };
+    list.onpointermove = e => {
+      if (!dragged) return;
+      const r = list.getBoundingClientRect();
+      if (e.clientY < r.top + 24) list.scrollTop -= 8; else if (e.clientY > r.bottom - 24) list.scrollTop += 8;
+      const before = [...list.children].find(li => { const b = li.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; });
+      if (before !== dragged && before !== dragged.nextSibling) list.insertBefore(dragged, before || null);
+      number();
+    };
+    list.onpointerup = list.onpointercancel = () => { dragged?.classList.remove('pocDragging'); dragged = null; };
+    m.querySelector('[data-cancel]').onclick = closeModal;
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const body = {};
+      // the fields' own values (FormData would turn the description's line breaks into CRLF)
+      for (const k of Object.keys(was)) { const v = form.elements[k].value; if (v !== was[k]) body[k] = v; }
+      if ('release_date' in body) body.release_date = body.release_date ? body.release_date + 'T00:00:00Z' : null;
+      const ids = [...list.children].map(li => Number(li.dataset.id));
+      const save = form.querySelector('[type=submit]');
+      save.disabled = true; msg.textContent = 'Saving…';
+      try {
+        if (ids.join() !== startIds.join()) {
+          // as Add to Playlist: never overwrite tracks someone added since this opened
+          const now = ((await api(`/playlists/${p.id}`)).tracks || []).map(x => x.id);
+          if (now.join() !== startIds.join()) throw new Error('its tracks changed elsewhere; close this and open Edit again');
+          body.tracks = ids;
+        }
+        if (!Object.keys(body).length) return closeModal();
+        await api(`/playlists/${p.id}`, {}, true, 'PUT', { playlist: body });
+        closeModal();
+        // a new permalink is a new address
+        if (body.permalink) go(`${p.user?.permalink}/sets/${body.permalink}`); else route();
+      } catch (err) { msg.textContent = 'Couldn’t save: ' + err.message; save.disabled = false; }
     };
   }
 
