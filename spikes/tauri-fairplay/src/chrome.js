@@ -7,7 +7,7 @@
 (() => {
   if (window.top !== window || window.__pocChrome) return;
   window.__pocChrome = true;
-  const isMac = /Mac/.test(navigator.platform), isWin = /Win/.test(navigator.platform);
+  const isMac = /Mac/.test(navigator.platform), isWin = /Win/.test(navigator.platform), isLinux = /Linux/.test(navigator.platform);
   const post = m => window.ipc?.postMessage(m);
   // The init script has the settings of the app's launch; after a change and
   // a full reload Rust answers "chrome:ready" with the saved ones.
@@ -158,6 +158,8 @@
     /* Windows (Electron header's platform-win32 layout): no traffic lights;
        window buttons at the far right of a frameless window, resized from its edges. */
     .pocTitlebar .window-controls, .pocEdge { display: none; }
+    /* Linux in a browser's app window: its frame and buttons, and one tab */
+    html.host-frame .pocTitlebar .window-controls, html.host-frame .pocEdge, html.host-frame .pocNewTab { display: none !important; }
     html.platform-win .pocTitlebar .header-side:first-child { padding-left: 8px; }
     /* a row, not the centred grid: when narrow, the search box gives way first, then the tab */
     html.platform-win .pocTitlebar { display: flex; }
@@ -173,6 +175,8 @@
     html.platform-win .pocTitlebar .header-side:last-child { padding-right: 0; }
     html.platform-win .pocTitlebar .window-controls { display: flex; align-self: stretch; margin-left: 4px; }
     .pocTitlebar .window-controls button { width: 46px; height: 100%; padding: 0; border: 0; background: transparent; color: var(--poc-text); font: 10px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; cursor: default; }
+    /* Linux has no Segoe icon font: drawn icons instead */
+    .pocTitlebar .window-controls button svg { display: block; margin: auto; }
     .pocTitlebar .window-controls button:hover { background: var(--poc-hover); }
     .pocTitlebar .window-controls .close:hover { background: #e81123; color: #fff; }
     html.platform-win:not(.maximized) .pocEdge { display: block; position: fixed; z-index: 2147483002; }
@@ -288,7 +292,7 @@
           <h2>Last.fm</h2>
           <label class="row"><span>Scrobble to Last.fm</span><span class="toggle"><input type="checkbox" data-setting="lastfm"><span class="slider"></span></span></label>
           <div data-lfm="setup">
-            <p class="hint">Uses your own Last.fm API account: <a class="link" data-external="https://www.last.fm/api/account/create">create one</a>, then paste its key and shared secret. The secret is kept in your ${isWin ? 'Windows Credential Manager' : 'macOS Keychain'}.</p>
+            <p class="hint">Uses your own Last.fm API account: <a class="link" data-external="https://www.last.fm/api/account/create">create one</a>, then paste its key and shared secret. The secret is kept in your ${isWin ? 'Windows Credential Manager' : isLinux ? 'system keyring' : 'macOS Keychain'}.</p>
             <label class="field"><span>API key</span><input class="textInput" data-lfm="key" autocomplete="off" spellcheck="false"></label>
             <label class="field"><span>Shared secret</span><input class="textInput" data-lfm="secret" type="password" autocomplete="off"></label>
             <div class="buttons"><button class="btn primary" data-lfm="connect">Connect Last.fm</button></div>
@@ -306,7 +310,7 @@
     <aside class="pocDownloads" hidden>
       <header><b>Downloads</b><span><button type="button" data-dl="open-folder">Open folder</button><button type="button" data-dl="clear">Clear</button><button type="button" data-dl="close" title="Close" aria-label="Close">×</button></span></header>
       <div class="pocDlList"></div>
-      <p class="pocDlEmpty">Use the download button under a track, album or playlist. Downloads need yt-dlp (${isWin ? 'winget install yt-dlp' : 'brew install yt-dlp'}); with ffmpeg too, files get their cover and tags.</p>
+      <p class="pocDlEmpty">Use the download button under a track, album or playlist. Downloads need yt-dlp (${isWin ? 'winget install yt-dlp' : isLinux ? 'from your package manager, or pip install yt-dlp' : 'brew install yt-dlp'}); with ffmpeg too, files get their cover and tags.</p>
     </aside>`;
 
   // SoundCloud's router follows pushState + popstate (the Electron app's
@@ -421,7 +425,7 @@
       forward: () => history.forward(),
       reload: () => location.reload(),
       settings: () => toggleSettings(),
-      newtab: () => post('tab:new'),
+      newtab: () => window.__hostFrame || post('tab:new'),
     };
 
     // --- Tabs: main.rs keeps one page per tab and shows one. This page's tab
@@ -469,14 +473,17 @@
 
     // Drag the window from empty bar space, double-click to zoom.
     bar.addEventListener('mousedown', e => {
-      if (e.button !== 0 || e.target.closest('.nav-button, .tab-group, .pocSearch, .window-controls')) return;
+      if (e.button !== 0 || window.__hostFrame || e.target.closest('.nav-button, .tab-group, .pocSearch, .window-controls')) return;
       post(e.detail === 2 ? 'zoom' : 'drag');
     });
 
-    // Windows: our own window buttons and resize edges; Rust drops the native
-    // frame only once told they exist. macOS keeps its traffic lights.
-    if (isWin) {
+    // Windows and Linux: our own window buttons and resize edges; Rust drops
+    // the native frame only once told they exist. macOS keeps its traffic lights.
+    if (isWin || isLinux) {
       document.documentElement.classList.add('platform-win');
+      document.documentElement.classList.toggle('host-frame', !!window.__hostFrame);
+      const glyphs = { minimize: 'M3.5 8h9', maximize: 'M4 4h8v8H4z', restore: 'M4 6h6v6H4zM6 6V4h6v6h-2', close: 'M12 4L4 12m8 0L4 4' };
+      if (isLinux) for (const k of ['minimize', 'maximize', 'close']) $('.' + k).innerHTML = icon(glyphs[k]);
       $('.minimize').onclick = () => post('minimize');
       $('.maximize').onclick = () => post('zoom');
       $('.close').onclick = () => post('close');
@@ -485,7 +492,8 @@
       });
       window.__windowState = ({ maximized }) => {
         document.documentElement.classList.toggle('maximized', maximized);
-        $('.maximize').textContent = maximized ? '' : '';
+        if (isLinux) $('.maximize').innerHTML = icon(maximized ? glyphs.restore : glyphs.maximize);
+        else $('.maximize').textContent = maximized ? '' : '';
         $('.maximize').title = maximized ? 'Restore' : 'Maximize';
       };
       post('frameless');

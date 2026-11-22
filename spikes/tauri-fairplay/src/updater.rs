@@ -16,7 +16,7 @@ const TAG: &str = "rust-v";
 pub type Ready = Arc<Mutex<Option<PathBuf>>>;
 
 fn asset_name() -> String {
-    let os = if cfg!(target_os = "macos") { "macos" } else { "windows" };
+    let os = if cfg!(target_os = "macos") { "macos" } else if cfg!(target_os = "linux") { "linux" } else { "windows" };
     format!("{os}-{}.zip", std::env::consts::ARCH)
 }
 
@@ -116,6 +116,8 @@ fn unzip(zip: &Path, out: &Path) -> Result<(), String> {
         std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
         run(std::process::Command::new("tar").arg("-xf").arg(zip).arg("-C").arg(out))?; // bsdtar, in Windows 10+
     }
+    #[cfg(target_os = "linux")]
+    run(std::process::Command::new("unzip").arg("-oq").arg(zip).arg("-d").arg(out))?;
     Ok(())
 }
 
@@ -132,7 +134,7 @@ fn verify(current: &Path, new: &Path) -> Result<(), String> {
 
 // Note: the Windows build isn't signed yet, so this trusts HTTPS from
 // GitHub; check an Authenticode signature once the exe has one.
-#[cfg(target_os = "windows")]
+#[cfg(not(target_os = "macos"))]
 fn verify(_current: &Path, _new: &Path) -> Result<(), String> {
     Ok(())
 }
@@ -163,7 +165,7 @@ pub fn install(ready: &Ready) {
 fn copy(from: &Path, to: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     return run(std::process::Command::new("ditto").arg(from).arg(to)).map(|_| ());
-    #[cfg(target_os = "windows")]
+    #[cfg(not(target_os = "macos"))]
     return std::fs::copy(from, to).map(|_| ()).map_err(|e| e.to_string());
 }
 

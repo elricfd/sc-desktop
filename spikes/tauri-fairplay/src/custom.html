@@ -330,12 +330,74 @@
 (() => {
   const $ = id => document.getElementById(id);
   // macOS: WKWebView, FairPlay, ⌘ shortcuts. Windows: WebView2, PlayReady, Ctrl, our own window buttons.
-  const isMac = /Mac/.test(navigator.platform), isWin = /Win/.test(navigator.platform);
+  const isMac = /Mac/.test(navigator.platform), isWin = /Win/.test(navigator.platform), isLinux = /Linux/.test(navigator.platform);
   const log = m => window.ipc?.postMessage('[ui] ' + m);
-  const audio = $('audio');
+  const audioEl = $('audio');
+  // Linux: Widevine-only (Go+) tracks play in Rust (goplus.rs), as WebKitGTK
+  // has no DRM. `audio` stands in for the <audio> element: the same properties
+  // and events, from the element or from Rust, whichever is playing.
+  const audio = (() => {
+    const fromRust = new EventTarget();
+    let native = false, st = {};
+    const send = m => window.ipc?.postMessage('native:' + m);
+    window.__native = (events, state) => {
+      if (!native) return;
+      st = state;
+      for (const e of events) fromRust.dispatchEvent(new Event(e));
+    };
+    const get = (k, fallback) => native ? (st[k] ?? fallback) : audioEl[k];
+    audioEl.addEventListener('volumechange', () => native && send('volume:' + (audioEl.muted ? 0 : audioEl.volume)));
+    return {
+      get currentTime() { return get('currentTime', 0); },
+      set currentTime(t) {
+        if (!native) { audioEl.currentTime = t; return; }
+        st = { ...st, currentTime: t, seeking: true };
+        send('seek:' + t);
+      },
+      get duration() { return native ? (st.duration ?? NaN) : audioEl.duration; },
+      get paused() { return get('paused', true); },
+      get ended() { return get('ended', false); },
+      get seeking() { return get('seeking', false); },
+      get readyState() { return get('readyState', 0); },
+      get error() { return native ? st.error || null : audioEl.error; },
+      // volume lives on the element either way
+      get volume() { return audioEl.volume; },
+      set volume(v) { audioEl.volume = v; },
+      get muted() { return audioEl.muted; },
+      set muted(v) { audioEl.muted = v; },
+      set src(u) { this.release(); audioEl.src = u; },
+      play() {
+        if (!native) return audioEl.play();
+        st = { ...st, paused: false };
+        send('resume');
+        return Promise.resolve();
+      },
+      pause() {
+        if (!native) return audioEl.pause();
+        st = { ...st, paused: true };
+        send('pause');
+      },
+      addEventListener(type, fn, opts) { audioEl.addEventListener(type, fn, opts); fromRust.addEventListener(type, fn, opts); },
+      removeEventListener(type, fn, opts) { audioEl.removeEventListener(type, fn, opts); fromRust.removeEventListener(type, fn, opts); },
+      // a stream from api-v2's encrypted transcoding ({ url, licenseAuthToken })
+      playNative(stream) {
+        audioEl.pause();
+        audioEl.removeAttribute('src');
+        audioEl.load();
+        native = true;
+        st = { currentTime: 0, duration: NaN, paused: false, readyState: 0 };
+        send('play:' + JSON.stringify({ url: stream.url, token: stream.licenseAuthToken, volume: audioEl.muted ? 0 : audioEl.volume }));
+      },
+      release() {
+        if (native) { native = false; send('stop'); }
+      },
+    };
+  })();
   const API = 'https://api-v2.soundcloud.com';
   const LICENSE = 'https://license.media-streaming.soundcloud.cloud/playback/fairplay';
-  const token = document.cookie.split('; ').find(c => c.startsWith('oauth_token='))?.slice(12);
+  // read again on a 401: signing in (or a renewal) replaces the cookie after the page has loaded
+  const readToken = () => document.cookie.split('; ').find(c => c.startsWith('oauth_token='))?.slice(12);
+  let token = readToken();
   const store = { get: k => { try { return JSON.parse(localStorage.getItem('scpoc:' + k)); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem('scpoc:' + k, JSON.stringify(v)); } catch {} } };
 
   // --- Icons: SoundCloud's own (collected from their pages, see harvest()),
@@ -532,7 +594,7 @@
     const form = body instanceof URLSearchParams; // sent form-encoded, as their Backbone models save
     if (body && !form) headers['Content-Type'] = 'application/json';
     const r = await fetch(u, { method, headers, body: form ? body : body && JSON.stringify(body) });
-    if (r.status === 401 && retry) { await refreshFromSite(); return api(path, params, false, method, body); }
+    if (r.status === 401 && retry) { token = readToken(); await refreshFromSite(); return api(path, params, false, method, body); }
     if (!r.ok) throw new Error(`${method} ${u.pathname} → ${r.status}`);
     return method === 'GET' ? r.json() : null;
   }
@@ -1712,16 +1774,21 @@
     renderQueue();
     const full = t.media.transcodings.filter(x => !x.snipped);
     // Encrypted streams: FairPlay (cbc) in WKWebView, PlayReady (ctr) in WebView2,
-    // whose Widevine SoundCloud's licence server refuses (403).
+    // whose Widevine SoundCloud's licence server refuses (403). Linux plays
+    // Widevine (ctr) in Rust, so only for tracks without a clear stream.
     const encrypted = isMac ? 'cbc-encrypted-hls' : 'ctr-encrypted-hls';
-    const pick = full.find(x => x.format.protocol === encrypted)
-      || full.find(x => x.format.protocol === 'progressive')
+    const drmStream = full.find(x => x.format.protocol === encrypted);
+    const clearStream = full.find(x => x.format.protocol === 'progressive')
       || full.find(x => x.format.protocol === 'hls' && /mp4a|mpeg/.test(x.format.mime_type));
+    const pick = isLinux ? clearStream || drmStream : drmStream || clearStream;
     if (!pick) return status(`No playable stream for “${t.title}”`);
     const stream = await api(pick.url, { track_authorization: t.track_authorization });
     if (hls) { hls.destroy(); hls = null; }
+    audio.release();
     log(`play ${t.id} via ${pick.format.protocol}`);
-    if (pick.format.protocol === 'progressive') {
+    if (isLinux && pick === drmStream) {
+      audio.playNative(stream);
+    } else if (pick.format.protocol === 'progressive') {
       audio.src = stream.url;
     } else {
       const drm = pick.format.protocol === encrypted;
@@ -1753,7 +1820,7 @@
       });
       hls.on(Hls.Events.ERROR, (_, d) => log(`hls error ${d.type} ${d.details} fatal=${d.fatal} ${d.error?.message || ''}`));
       hls.loadSource(stream.url);
-      hls.attachMedia(audio);
+      hls.attachMedia(audioEl);
     }
     if (startFraction) audio.addEventListener('loadedmetadata', () => seekTo(startFraction), { once: true });
     audio.play().catch(e => log('play() rejected: ' + e.message));

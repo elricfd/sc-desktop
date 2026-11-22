@@ -4,6 +4,7 @@
 // Note: hand list of hosts SoundCloud loads plus common ad networks, not
 // full EasyList (Electron uses Ghostery's lists); convert EasyList if ads
 // slip through.
+#[cfg(not(target_os = "linux"))]
 use wry::WebView;
 
 // Hosts blocked with their subdomains. Not here on purpose: www.google.com
@@ -30,7 +31,7 @@ const HOSTS: &[&str] = &[
     "bat.bing.com",
 ];
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 pub fn rules() -> String {
     let mut rules: Vec<String> = HOSTS
         .iter()
@@ -93,6 +94,74 @@ pub fn install(webview: &WebView, done: impl Fn() + 'static) {
     };
 }
 
+/// The blocked addresses as wildcard patterns (WebView2 filters, DevTools blocked URLs).
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn filters() -> impl Iterator<Item = String> {
+    HOSTS.iter().flat_map(|h| [format!("*://{h}/*"), format!("*://*.{h}/*")]).chain([
+        "*://artist-events.soundcloud.com/*".to_string(),
+        "*://soundcloud.com/n/embeds/credit-tracker*".to_string(),
+        "*://www.facebook.com/tr*".to_string(),
+    ])
+}
+
+/// Linux: WebKitGTK takes the same content-blocker JSON as macOS, compiled
+/// into a filter store beside our settings; a browser's page gets the
+/// patterns as DevTools blocked URLs. `done` runs either way.
+#[cfg(target_os = "linux")]
+pub fn install(view: &crate::View, done: impl Fn() + 'static) {
+    let webview = match view {
+        crate::View::Wry(webview) => webview,
+        crate::View::Browser(page) => {
+            page.send("Network.enable", serde_json::json!({}));
+            page.send("Network.setBlockedURLs", serde_json::json!({ "urls": filters().collect::<Vec<_>>() }));
+            return done();
+        }
+    };
+    use gtk::glib::translate::ToGlibPtr;
+    use std::ffi::{CStr, CString, c_void};
+    use webkit2gtk::WebViewExt;
+    use webkit2gtk_sys as wk;
+    use wry::WebViewExtUnix;
+
+    struct Pending {
+        manager: webkit2gtk::UserContentManager,
+        done: Box<dyn Fn()>,
+    }
+    unsafe extern "C" fn saved(store: *mut gobject_sys::GObject, res: *mut gio_sys::GAsyncResult, data: *mut c_void) {
+        let p = unsafe { Box::from_raw(data as *mut Pending) };
+        let mut err: *mut glib_sys::GError = std::ptr::null_mut();
+        let filter = unsafe { wk::webkit_user_content_filter_store_save_finish(store as *mut _, res, &mut err) };
+        if filter.is_null() {
+            let msg = if err.is_null() { "unknown error".into() } else { unsafe { CStr::from_ptr((*err).message) }.to_string_lossy().into_owned() };
+            eprintln!("adblock: compile failed: {msg}");
+            if !err.is_null() {
+                unsafe { glib_sys::g_error_free(err) };
+            }
+        } else {
+            unsafe {
+                wk::webkit_user_content_manager_add_filter(p.manager.to_glib_none().0, filter);
+                wk::webkit_user_content_filter_unref(filter);
+            }
+        }
+        unsafe { gobject_sys::g_object_unref(store) };
+        (p.done)();
+    }
+
+    let Some(manager) = webview.webview().user_content_manager() else {
+        eprintln!("adblock: no user content manager");
+        return done();
+    };
+    let dir = CString::new(crate::data_dir().join("content-filters").to_string_lossy().into_owned()).unwrap();
+    let id = CString::new("sc-adblock").unwrap();
+    let bytes = gtk::glib::Bytes::from_owned(rules().into_bytes());
+    unsafe {
+        let store = wk::webkit_user_content_filter_store_new(dir.as_ptr());
+        let data = Box::into_raw(Box::new(Pending { manager, done: Box::new(done) }));
+        let source: *const glib_sys::GBytes = bytes.to_glib_none().0;
+        wk::webkit_user_content_filter_store_save(store, id.as_ptr(), source as *mut _, std::ptr::null_mut(), Some(saved), data as *mut c_void);
+    }
+}
+
 /// Refuse blocked requests, then call `done` whether or not that worked, so
 /// the page loads either way.
 #[cfg(target_os = "windows")]
@@ -102,13 +171,8 @@ pub fn install(webview: &WebView, done: impl Fn() + 'static) {
     use wry::WebViewExtWindows;
     let (wv, env) = (webview.webview(), webview.environment());
     // One filter per rule, so other requests never leave the browser process.
-    let filters = HOSTS.iter().flat_map(|h| [format!("*://{h}/*"), format!("*://*.{h}/*")]).chain([
-        "*://artist-events.soundcloud.com/*".to_string(),
-        "*://soundcloud.com/n/embeds/credit-tracker*".to_string(),
-        "*://www.facebook.com/tr*".to_string(),
-    ]);
     let result = (|| -> windows::core::Result<()> {
-        for f in filters {
+        for f in filters() {
             crate::add_filter(&wv, &f)?;
         }
         let handler = WebResourceRequestedEventHandler::create(Box::new(move |_, args| {

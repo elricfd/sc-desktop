@@ -1,0 +1,287 @@
+diff --git a/src/session.cpp b/src/session.cpp
+index c32dcfa..4a094a2 100644
+--- a/src/session.cpp
++++ b/src/session.cpp
+@@ -1,3 +1,4 @@
++#include <vector>
+ #include <gst/gst.h>
+ 
+ #include "open_cdm.h"
+@@ -37,12 +38,17 @@ void OpenCDMSession::errorCallback(const string& message) {
+ 
+ void OpenCDMSession::licenseRequestCallback(span<const uint8_t> message) {
+   if (callbacks->process_challenge_callback) {
++    // WebKit's and Sparkle-CDM's framing: "<message type>:Type:" then the
++    // payload; 0 is a licence request (as Sparkle-CDM's ClearKey module sends)
++    static const char prefix[] = "0:Type:";
++    std::vector<uint8_t> framed(prefix, prefix + 7);
++    framed.insert(framed.end(), message.begin(), message.end());
+     callbacks->process_challenge_callback(
+         this,
+         userData,
+         nullptr,
+-        message.data(),
+-        message.size()
++        framed.data(),
++        framed.size()
+     );
+   }
+ }
+@@ -95,7 +101,9 @@ bool OpenCDMSession::hasKey(const string& keyId) const {
+ 
+ OpenCDMError opencdm_destruct_session(OpenCDMSession* session) {
+   LOG("%p", session);
+-  delete session;
++  // made with make_shared and held by the system's maps: drop it from those
++  // (deleting the raw pointer freed memory make_shared owns)
++  releaseSession(session);
+   return ERROR_NONE;
+ }
+ 
+diff --git a/src/system.cpp b/src/system.cpp
+index 50227fc..6d24d36 100644
+--- a/src/system.cpp
++++ b/src/system.cpp
+@@ -8,6 +8,7 @@
+ #include <gmodule.h>
+ 
+ #include <atomic>
++#include <mutex>
+ #include <future>
+ #include <memory>
+ #include <optional>
+@@ -69,6 +70,12 @@ static const string widevineUUID("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed");
+ 
+ static GModule *mod;
+ 
++// Widevine is single-threaded: every call into it goes through this lock.
++static std::recursive_mutex& cdm_mutex() {
++  static std::recursive_mutex m;
++  return m;
++}
++
+ using InitializeCdmModuleFunc = void (*)();
+ using CreateCdmInstanceFunc = void* (*)(
+     int cdm_interface_version,
+@@ -84,7 +91,9 @@ static bool initialize_cdm(GModule* mod) {
+     return false;
+   }
+   auto func = reinterpret_cast<InitializeCdmModuleFunc>(sym);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   func();
++  }
+   return true;
+ }
+ 
+@@ -100,7 +109,8 @@ static bool create_cdm_instance(
+     return false;
+   }
+   auto func = reinterpret_cast<CreateCdmInstanceFunc>(sym);
+-  auto ptr = func(10, keySystem.data(), keySystem.size(), get_cdm_host, user_data);
++  void* ptr;
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex()); ptr = func(10, keySystem.data(), keySystem.size(), get_cdm_host, user_data); }
+   if (ptr == nullptr) {
+     return false;
+   }
+@@ -314,8 +324,10 @@ struct BasicDecryptedBlock final : DecryptedBlock {
+ 
+ struct Host;
+ 
++// A timer can fire after its CDM is gone (the player was stopped): it holds
++// the host weakly, and the CDM is checked under the lock before use.
+ struct SetTimerContext {
+-  Host* host;
++  std::weak_ptr<Host> host;
+   void* call_context;
+ };
+ 
+@@ -427,7 +439,7 @@ struct SetServerCertificateResponse : variant<monostate, RejectedPromise> {
+   }
+ };
+ 
+-struct Host final : Host_10 {
++struct Host final : Host_10, std::enable_shared_from_this<Host> {
+   GstClock *clock;
+   OpenCDMSystem *system;
+   promise<bool> cdmInitialized;
+@@ -456,13 +468,17 @@ struct Host final : Host_10 {
+     auto delay_ns = delay_ms * 1000 * 1000;
+     auto deadline = gst_clock_get_time(clock) + delay_ns;
+     auto id = gst_clock_new_single_shot_id(clock, deadline);
+-    auto set_timer_context = new SetTimerContext { this, context };
++    auto set_timer_context = new SetTimerContext { weak_from_this(), context };
+     auto cb = [] (GstClock* clock, GstClockTime time, GstClockID id, void* user_data) -> gboolean {
+       UNUSED(clock);
+       UNUSED(time);
+       auto ctx = (SetTimerContext *) user_data;
+       gst_clock_id_unref(id);
+-      ctx->host->system->cdm->TimerExpired(ctx->call_context);
++      { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
++      auto host = ctx->host.lock();
++      if (host && host->system && host->system->cdm)
++        host->system->cdm->TimerExpired(ctx->call_context);
++      }
+       delete ctx;
+       return false;
+     };
+@@ -744,7 +760,9 @@ struct Host final : Host_10 {
+   }
+ 
+   void QueryOutputProtectionStatus() final {
++    { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+     system->cdm->OnQueryOutputProtectionStatus(cdm::QueryResult::kQuerySucceeded, 0, 0);
++    }
+   }
+ 
+   void OnDeferredInitializationDone(StreamType stream_type, Status decoder_status) final {
+@@ -759,7 +777,9 @@ struct Host final : Host_10 {
+   void RequestStorageId(uint32_t version) final {
+     LOG("%u", version);
+     string id("test");
++    { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+     system->cdm->OnStorageId(version, (uint8_t *) id.c_str(), id.length());
++    }
+   }
+ };
+ 
+@@ -786,8 +806,11 @@ OpenCDMSystem::OpenCDMSystem(string keySystem) {
+ }
+ 
+ OpenCDMSystem::~OpenCDMSystem() {
++  std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->Destroy();
+   cdm = nullptr;
++  // a pending timer may still hold the host: it must not reach this system
++  host->system = nullptr;
+ }
+ 
+ static SessionType sessionTypeFromLicenseType(LicenseType licenseType) {
+@@ -834,7 +857,9 @@ OpenCDMError OpenCDMSystem::constructSession(
+   auto initialized = host->cdmInitializedFuture;
+   if (initialized.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+     LOG("%p: initializing cdm", cdm);
++    { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+     cdm->Initialize(false, false, false);
++    }
+   }
+   if (!initialized.get()) {
+     LOG("%p: CDM failed to initialize", cdm);
+@@ -849,6 +874,7 @@ OpenCDMError OpenCDMSystem::constructSession(
+     userData,
+   };
+   auto future = host->registerPromiseCreateSession(promiseId, request);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->CreateSessionAndGenerateRequest(
+       promiseId,
+       sessionType,
+@@ -856,13 +882,16 @@ OpenCDMError OpenCDMSystem::constructSession(
+       initData.data(),
+       initData.size()
+   );
++  }
+   auto response = future.get();
+   auto error = response.error();
+   if (error) {
+     return error->openCdmError();
+   }
+   auto newSession = response.session().value();
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   sessions[newSession->id] = newSession;
++  }
+   session = newSession.get();
+   return ERROR_NONE;
+ }
+@@ -870,12 +899,14 @@ OpenCDMError OpenCDMSystem::constructSession(
+ OpenCDMError OpenCDMSystem::loadSession(const OpenCDMSession& session) {
+   auto promiseId = nextPromiseId();
+   auto future = host->registerPromiseUpdateSession(promiseId);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->LoadSession(
+       promiseId,
+       session.sessionType,
+       session.id.data(),
+       session.id.length()
+   );
++  }
+   auto response = future.get();
+   auto error = response.error();
+   if (error) {
+@@ -890,6 +921,7 @@ OpenCDMError OpenCDMSystem::updateSession(
+ ) {
+   auto promiseId = nextPromiseId();
+   auto future = host->registerPromiseUpdateSession(promiseId);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->UpdateSession(
+       promiseId,
+       session.id.data(),
+@@ -897,6 +929,7 @@ OpenCDMError OpenCDMSystem::updateSession(
+       message.data(),
+       message.size()
+   );
++  }
+   auto response = future.get();
+   auto error = response.error();
+   if (error) {
+@@ -909,7 +942,9 @@ OpenCDMError OpenCDMSystem::updateSession(
+ OpenCDMError OpenCDMSystem::removeSession(OpenCDMSession& session) {
+   auto promiseId = nextPromiseId();
+   auto future = host->registerPromiseRemoveSession(promiseId);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->RemoveSession(promiseId, session.id.data(), session.id.length());
++  }
+   auto response = future.get();
+   auto error = response.error();
+   if (error) {
+@@ -923,7 +958,9 @@ OpenCDMError OpenCDMSystem::removeSession(OpenCDMSession& session) {
+ OpenCDMError OpenCDMSystem::closeSession(OpenCDMSession& session) {
+   auto promiseId = nextPromiseId();
+   auto future = host->registerPromiseCloseSession(promiseId);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->CloseSession(promiseId, session.id.data(), session.id.length());
++  }
+   auto response = future.get();
+   auto error = response.error();
+   if (error) {
+@@ -939,7 +976,9 @@ OpenCDMError OpenCDMSystem::setServerCertificate(
+ ) {
+   auto promiseId = nextPromiseId();
+   auto future = host->registerPromiseSetServerCertificate(promiseId);
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
+   cdm->SetServerCertificate(promiseId, certificate.data(), certificate.size());
++  }
+   auto response = future.get();
+   auto error = response.error();
+   if (error) {
+@@ -954,7 +993,8 @@ static OpenCDMError processDecryptionResult(
+     cdm::InputBuffer_2 input
+ ) {
+   BasicDecryptedBlock decrypted;
+-  auto result = cdm.Decrypt(input, &decrypted);
++  cdm::Status result;
++  { std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex()); result = cdm.Decrypt(input, &decrypted); }
+   switch (result) {
+     case cdm::kSuccess:
+       memcpy(buffer.data(), decrypted.data(), decrypted.size());
+@@ -1219,3 +1259,11 @@ OpenCDMError opencdm_construct_session(
+       *session
+   );
+ }
++
++void releaseSession(OpenCDMSession* session) {
++  std::lock_guard<std::recursive_mutex> cdm_guard(cdm_mutex());
++  auto system = session->system;
++  string id = session->id;
++  system->host->sessions.erase(id);
++  system->sessions.erase(id);
++}
+diff --git a/src/system.h b/src/system.h
+index 9cfac1b..c97fc0b 100644
+--- a/src/system.h
++++ b/src/system.h
+@@ -70,3 +70,6 @@ struct OpenCDMSystem {
+   ContentDecryptionModule_10* cdm;
+   unordered_map<string, shared_ptr<OpenCDMSession>> sessions;
+ };
++// Drops a session from its system (it is freed once nothing holds it).
++void releaseSession(OpenCDMSession* session);
++

@@ -473,6 +473,9 @@ pub fn reveal(path: &std::path::Path, select: bool) {
     let _ = if select { Command::new("open").arg("-R").arg(path).spawn() } else { Command::new("open").arg(path).spawn() };
     #[cfg(target_os = "windows")]
     let _ = if select { Command::new("explorer").arg(format!("/select,{}", path.display())).spawn() } else { Command::new("explorer").arg(path).spawn() };
+    // xdg-open can't select a file: open the folder it's in
+    #[cfg(target_os = "linux")]
+    let _ = Command::new("xdg-open").arg(if select { path.parent().unwrap_or(path) } else { path }).spawn();
 }
 
 #[cfg(test)]

@@ -1,0 +1,28 @@
+diff --git a/src/gst/decryptor.cpp b/src/gst/decryptor.cpp
+index c6c6343..86dbac7 100644
+--- a/src/gst/decryptor.cpp
++++ b/src/gst/decryptor.cpp
+@@ -634,6 +634,23 @@ sinkEventHandler (GstBaseTransform * trans, GstEvent * event)
+           result = TRUE;
+           gst_event_unref (event);
+         }
++      } else if (g_str_has_prefix (origin, "isobmff/") && systemId
++          && !self->session
++          && opencdm_is_type_supported (systemId, nullptr) == ERROR_NONE) {
++        // HLS (and DASH without ContentProtection in the manifest): the pssh
++        // box comes from the MP4 itself, and is the "cenc" init data as is
++        self->system = opencdm_create_system (systemId);
++        gst_buffer_map (protectionData, &info, GST_MAP_READ);
++        opencdm_construct_session (self->system, Temporary, "cenc",
++            info.data, info.size, nullptr, 0,
++            &self->sessionCallbacks, self, &self->session);
++        gst_buffer_unmap (protectionData, &info);
++        GST_DEBUG_OBJECT (self, "Session from %s pssh: %p", origin, self->session);
++        if (self->session) {
++          forward = FALSE;
++          result = TRUE;
++          gst_event_unref (event);
++        }
+       } else {
+         GST_DEBUG_OBJECT (self, "Unhandled protection event %" GST_PTR_FORMAT,
+             event);

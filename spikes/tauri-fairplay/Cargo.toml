@@ -27,3 +27,19 @@ keyring = { version = "3", features = ["apple-native"] }
 webview2-com = "0.39"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Same versions as wry, for the GTK container and WebKitGTK's content filters.
+gtk = "0.18"
+webkit2gtk = { version = "2.0", features = ["v2_40"] }
+webkit2gtk-sys = { version = "2.0", features = ["v2_40"] }
+# fds 3 and 4 for the browser's DevTools pipe (browser.rs)
+libc = "0.2"
+# PNGs of the page for the SNAP test command
+cairo-rs = { version = "0.18", features = ["png"] }
+glib-sys = "0.18"
+gio-sys = "0.18"
+gobject-sys = "0.18"
+# Secret Service (GNOME Keyring / KWallet); libdbus built in, so no dbus-devel needed.
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+gstreamer = "0.25.4"

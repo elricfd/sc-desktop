@@ -11,7 +11,11 @@
 // Each stdin line is JavaScript run in the page, so tests can drive it.
 mod accounts;
 mod adblock;
+#[cfg(target_os = "linux")]
+mod browser;
 mod downloads;
+#[cfg(target_os = "linux")]
+mod goplus;
 mod lastfm;
 mod presence;
 mod tray;
@@ -66,19 +70,74 @@ enum Ev {
 /// One page per tab, as the Electron app's BrowserViews; only the shown one is visible.
 struct Tab {
     id: u32,
-    view: wry::WebView,
+    view: View,
     // what its title bar last reported: { title, path, icon }
     info: serde_json::Value,
 }
 
-// The webview profile every tab shares: WebView2's folder on Windows; macOS
-// picks its data store per webview.
-#[cfg(target_os = "windows")]
+// The webview profile every tab shares: WebView2's or WebKitGTK's folder on
+// Windows and Linux; macOS picks its data store per webview.
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 type Ctx = wry::WebContext;
 #[cfg(target_os = "macos")]
 type Ctx = ();
 
 const HOME: &str = "https://soundcloud.com";
+
+// Linux: the tabs' webviews are the pages of a GTK stack filling the window,
+// the shown tab its visible page. (wry's bounds don't hold up there: they are
+// taken as window coordinates, under GNOME's title bar and shadow, and its
+// size request stops the window from shrinking.)
+#[cfg(target_os = "linux")]
+thread_local! {
+    static STACK: std::cell::OnceCell<gtk::Stack> = const { std::cell::OnceCell::new() };
+}
+
+// A tab's page: a wry webview, or on Linux the page in a browser's own app
+// window when one with Widevine is installed (browser.rs).
+#[cfg(not(target_os = "linux"))]
+type View = wry::WebView;
+#[cfg(target_os = "linux")]
+enum View {
+    Wry(wry::WebView),
+    Browser(browser::Page),
+}
+#[cfg(target_os = "linux")]
+impl View {
+    fn evaluate_script(&self, js: &str) -> wry::Result<()> {
+        match self {
+            View::Wry(v) => v.evaluate_script(js),
+            View::Browser(p) => Ok(p.eval(js)),
+        }
+    }
+    fn load_url(&self, url: &str) -> wry::Result<()> {
+        match self {
+            View::Wry(v) => v.load_url(url),
+            View::Browser(p) => Ok(p.load(url)),
+        }
+    }
+    // the browser lays out its own window
+    fn set_bounds(&self, bounds: wry::Rect) -> wry::Result<()> {
+        match self {
+            View::Wry(v) => v.set_bounds(bounds),
+            View::Browser(_) => Ok(()),
+        }
+    }
+    fn focus(&self) -> wry::Result<()> {
+        match self {
+            View::Wry(v) => v.focus(),
+            View::Browser(p) => Ok(p.front()),
+        }
+    }
+}
+
+/// Linux: the page is in a browser's own window, and ours is never shown.
+fn hosted() -> bool {
+    #[cfg(target_os = "linux")]
+    return browser::found().is_some();
+    #[cfg(not(target_os = "linux"))]
+    false
+}
 
 /// A soundcloud.com address, the only kind a tab opens.
 fn soundcloud_url(url: &str) -> bool {
@@ -86,6 +145,8 @@ fn soundcloud_url(url: &str) -> bool {
 }
 
 fn main() -> wry::Result<()> {
+    #[cfg(target_os = "linux")]
+    goplus::prepare_env();
     let settings = load_settings();
     let setting = |k: &str| settings[k].as_bool().unwrap_or(true);
     let on = |k: &str, default: bool| std::env::var(k).map(|v| v != "0").unwrap_or(default);
@@ -149,12 +210,22 @@ fn main() -> wry::Result<()> {
         // is centred on our 32px bar. Moving them (tao's inset, or by hand) made
         // AppKit move them back during resizes and when a tab's webview was added.
     }
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         let (rgba, w, h) = tray::rgba(include_bytes!("icons/app.png"));
         window = window.with_window_icon(tao::window::Icon::from_rgba(rgba, w, h).ok());
     }
     let window = window.build(&event_loop).unwrap();
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+        use tao::platform::unix::WindowExtUnix;
+        let stack = gtk::Stack::new();
+        let vbox = window.default_vbox().expect("tao's GTK box");
+        vbox.pack_start(&stack, true, true, 0);
+        stack.show_all();
+        STACK.with(|s| s.set(stack).ok());
+    }
     let update_ready = updater::Ready::default();
     if setting("autoUpdate") && std::env::var("UPDATES").as_deref() != Ok("0") {
         let p = proxy.clone();
@@ -173,8 +244,8 @@ fn main() -> wry::Result<()> {
     });
 
     // WebView2's profile (cookies, the Widevine CDM) goes beside our settings
-    // instead of next to the exe; every tab shares it.
-    #[cfg(target_os = "windows")]
+    // instead of next to the exe; every tab shares it. WebKitGTK's too.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     let mut context: Ctx = wry::WebContext::new(Some(data_dir().join(match accounts::current(&data_dir()).as_str() {
         "default" => "webview".to_string(),
         id => format!("webview-{id}"),
@@ -182,6 +253,9 @@ fn main() -> wry::Result<()> {
     #[cfg(target_os = "macos")]
     let mut context: Ctx = ();
     let mut tabs: Vec<Tab> = Vec::new();
+    // Linux: the Go+ track playing natively for the custom UI (goplus.rs)
+    #[cfg(target_os = "linux")]
+    let mut goplus: Option<goplus::Player> = None;
     let mut active = 0u32;
     let mut pending: Option<u32>; // a new tab (or the first page) waiting to come on
     let mut window_shown = false; // the window starts hidden
@@ -210,7 +284,8 @@ fn main() -> wry::Result<()> {
     // Closing hides the window when "Minimize to tray" is on (the default, as
     // in the Electron app); the tray, the Dock or Quit bring it back or end it.
     let close = |window: &tao::window::Window, flow: &mut ControlFlow| {
-        if load_settings()["minimizeToTray"].as_bool().unwrap_or(true) {
+        // hidden only where the tray icon can bring it back
+        if load_settings()["minimizeToTray"].as_bool().unwrap_or(true) && tray::shown() {
             window.set_visible(false);
         } else {
             *flow = ControlFlow::Exit;
@@ -235,6 +310,14 @@ fn main() -> wry::Result<()> {
             let _ = t.view.set_bounds(tab_bounds(window, t.id == id));
         }
         if let Some(t) = tabs.iter().find(|t| t.id == id) {
+            #[cfg(target_os = "linux")]
+            {
+                use gtk::prelude::StackExt;
+                use wry::WebViewExtUnix;
+                if let View::Wry(v) = &t.view {
+                    STACK.with(|s| s.get().map(|s| s.set_visible_child(&v.webview())));
+                }
+            }
             let _ = t.view.focus();
         }
     };
@@ -251,7 +334,12 @@ fn main() -> wry::Result<()> {
                 #[cfg(target_os = "macos")]
                 tray::set_dock_icon();
             }
-            Event::UserEvent(Ev::Tray(tray::Action::Show)) => show(&window),
+            Event::UserEvent(Ev::Tray(tray::Action::Show)) => {
+                show(&window);
+                if let Some(v) = shown {
+                    let _ = v.focus();
+                }
+            }
             Event::UserEvent(Ev::Tray(tray::Action::Settings)) => {
                 show(&window);
                 if let Some(v) = shown {
@@ -269,12 +357,21 @@ fn main() -> wry::Result<()> {
                     use wry::WebViewExtDarwin;
                     wry::WebView::remove_data_store(&uuid, |r| if let Err(e) = r { eprintln!("accounts: store not removed: {e}") });
                 }
-                #[cfg(target_os = "windows")]
+                #[cfg(any(target_os = "windows", target_os = "linux"))]
                 let _ = std::fs::remove_dir_all(data_dir().join(format!("webview-{id}")));
+                #[cfg(target_os = "linux")]
+                let _ = std::fs::remove_dir_all(data_dir().join(format!("browser-{id}")));
             }
             // a click on the Dock icon while the window is hidden
             Event::Reopen { .. } => show(&window),
             Event::LoopDestroyed => {
+                // a browser outlives its DevTools pipe: tell it to go
+                #[cfg(target_os = "linux")]
+                for t in &tabs {
+                    if let View::Browser(page) = &t.view {
+                        page.send("Browser.close", serde_json::json!({}));
+                    }
+                }
                 dls.cancel_all();
                 updater::install(&update_ready);
             }
@@ -307,7 +404,7 @@ fn main() -> wry::Result<()> {
                 }
             }
             Event::UserEvent(Ev::ShowTab(id)) => {
-                if !window_shown {
+                if !window_shown && !hosted() {
                     window_shown = true;
                     window.set_visible(true);
                     window.set_focus();
@@ -322,6 +419,13 @@ fn main() -> wry::Result<()> {
             }
             Event::UserEvent(Ev::NewTab(url, focus)) => {
                 if custom || !soundcloud_url(&url) {
+                    return;
+                }
+                // a browser's app window holds one page: a link for a new tab opens in it
+                if hosted() {
+                    if url != HOME {
+                        let _ = proxy.send_event(Ev::LoadTab(active, url));
+                    }
                     return;
                 }
                 match open_tab(next_id, url, &window, &mut context) {
@@ -348,6 +452,10 @@ fn main() -> wry::Result<()> {
                 }
             }
             Event::UserEvent(Ev::Ipc(from, body)) => {
+                #[cfg(target_os = "linux")]
+                if let Some(cmd) = body.strip_prefix("native:") {
+                    return native_command(&mut goplus, cmd, &proxy);
+                }
                 use std::sync::atomic::Ordering;
                 let reply = |js: String| {
                     if let Some(t) = tabs.iter().find(|t| t.id == from) {
@@ -459,6 +567,8 @@ fn main() -> wry::Result<()> {
                         window.set_decorations(false);
                         window.set_undecorated_shadow(true);
                     }
+                    #[cfg(target_os = "linux")]
+                    window.set_decorations(false);
                 } else if let Some(dir) = body.strip_prefix("resize:").and_then(resize_direction) {
                     let _ = window.drag_resize_window(dir);
                 // --- tabs: new (Ctrl+T, +), open in the background (middle-click),
@@ -544,7 +654,11 @@ fn build_tab(
     custom: bool,
     trace: bool,
     #[allow(unused_variables)] context: &mut Ctx,
-) -> wry::Result<wry::WebView> {
+) -> wry::Result<View> {
+    #[cfg(target_os = "linux")]
+    if let Some(bin) = browser::found() {
+        return browser_tab(id, bin, proxy, trace);
+    }
     // fixes.js works around WebKit bugs only.
     #[cfg(target_os = "macos")]
     let builder = WebViewBuilder::new().with_user_agent(safari_ua()).with_initialization_script(include_str!("fixes.js"));
@@ -565,6 +679,10 @@ fn build_tab(
             "(() => { const r = navigator.requestMediaKeySystemAccess?.bind(navigator); if (r) navigator.requestMediaKeySystemAccess = (ks, c) => /widevine/i.test(ks) ? Promise.reject(new DOMException('Unsupported keySystem or supportedConfigurations.', 'NotSupportedError')) : r(ks, c); })();",
         )
     };
+    // WebKitGTK: its own user agent (an X11 Safari-like one); EME is whatever
+    // GStreamer decryptors are installed.
+    #[cfg(target_os = "linux")]
+    let builder = WebViewBuilder::new_with_web_context(context);
     let (dl, nw, ipc) = (proxy.clone(), proxy.clone(), proxy.clone());
     let mut builder = builder
         .with_bounds(tab_bounds(window, false))
@@ -606,20 +724,93 @@ fn build_tab(
         .with_autoplay(true);
     if !custom {
         // our title bar and settings over soundcloud.com, with the saved settings
-        let state = format!(
-            "window.__tabId = {id}; window.__settings = {}; window.__lastfm = {}; window.__appVersion = '{}'; window.__accounts = {}; window.__oledCss = {};",
-            load_settings(),
-            lastfm::status(),
-            env!("CARGO_PKG_VERSION"),
-            accounts::load(&data_dir()),
-            serde_json::Value::from(include_str!("../../../themes/OLED.css"))
-        );
-        builder = builder.with_initialization_script_for_main_only(state, true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
+        builder = builder.with_initialization_script_for_main_only(chrome_state(id), true).with_initialization_script_for_main_only(include_str!("chrome.js"), true);
     }
     if trace {
         builder = builder.with_initialization_script(include_str!("trace.js"));
     }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = window;
+        use wry::WebViewBuilderExtUnix;
+        STACK.with(|s| builder.build_gtk(s.get().expect("GTK container set up in main"))).map(View::Wry)
+    }
+    #[cfg(not(target_os = "linux"))]
     builder.build_as_child(window)
+}
+
+/// The custom UI's stand-in for <audio> drives the native Go+ player:
+/// play:{url, token, volume}, pause, resume, seek:<seconds>, volume:<0-1>, stop.
+#[cfg(target_os = "linux")]
+fn native_command(player: &mut Option<goplus::Player>, cmd: &str, proxy: &tao::event_loop::EventLoopProxy<Ev>) {
+    let p = proxy.clone();
+    let emit: goplus::Emit = std::sync::Arc::new(move |events: &[&str], state: serde_json::Value| {
+        let _ = p.send_event(Ev::Js(format!("window.__native && window.__native({}, {state})", serde_json::json!(events))));
+    });
+    let (verb, arg) = cmd.split_once(':').unwrap_or((cmd, ""));
+    match (verb, player.as_ref()) {
+        ("play", _) => {
+            *player = None; // the one before stops
+            let v: serde_json::Value = serde_json::from_str(arg).unwrap_or_default();
+            let (url, token) = (v["url"].as_str().unwrap_or_default().to_string(), v["token"].as_str().unwrap_or_default().to_string());
+            match goplus::Player::play(url, token, v["volume"].as_f64().unwrap_or(1.0), emit.clone()) {
+                Ok(p) => *player = Some(p),
+                Err(e) => emit(&["error"], serde_json::json!({ "paused": true, "error": { "code": 4, "message": e } })),
+            }
+        }
+        ("pause", Some(p)) => p.pause(),
+        ("resume", Some(p)) => p.resume(),
+        ("seek", Some(p)) => p.seek(arg.parse().unwrap_or(0.0)),
+        ("volume", Some(p)) => p.set_volume(arg.parse().unwrap_or(1.0)),
+        ("stop", _) => *player = None,
+        _ => {}
+    }
+}
+
+/// What chrome.js starts from: its tab, the saved settings and accounts.
+fn chrome_state(id: u32) -> String {
+    format!(
+        "window.__tabId = {id}; window.__settings = {}; window.__lastfm = {}; window.__appVersion = '{}'; window.__accounts = {}; window.__oledCss = {};",
+        load_settings(),
+        lastfm::status(),
+        env!("CARGO_PKG_VERSION"),
+        accounts::load(&data_dir()),
+        serde_json::Value::from(include_str!("../../../themes/OLED.css"))
+    )
+}
+
+/// The tab as a page in the browser's app window, with the same page scripts.
+#[cfg(target_os = "linux")]
+fn browser_tab(id: u32, bin: &std::path::Path, proxy: &tao::event_loop::EventLoopProxy<Ev>, trace: bool) -> wry::Result<View> {
+    // not in frames, nor in the empty page the window starts on
+    let main_only = |js: &str| format!("if (window.top === window && location.protocol === 'https:') {{\n{js}\n}}");
+    let mut scripts = vec![
+        main_only(include_str!("clean.js")),
+        include_str!("nowplaying.js").to_string(),
+        // __hostFrame: the browser draws the window's frame and buttons, and there is one tab
+        main_only(&format!("{} window.__hostFrame = true;\n{}", chrome_state(id), include_str!("chrome.js"))),
+    ];
+    if trace {
+        scripts.push(main_only(include_str!("trace.js")));
+    }
+    let profile = data_dir().join(match accounts::current(&data_dir()).as_str() {
+        "default" => "browser".to_string(),
+        id => format!("browser-{id}"),
+    });
+    let (ipc, exit) = (proxy.clone(), proxy.clone());
+    let page = browser::open(
+        bin,
+        &profile,
+        scripts,
+        move |body| {
+            let _ = ipc.send_event(Ev::Ipc(id, body));
+        },
+        // its window is the app: closing it quits
+        move || {
+            let _ = exit.send_event(Ev::Tray(tray::Action::Quit));
+        },
+    )?;
+    Ok(View::Browser(page))
 }
 
 /// "resize:<edge>" from the page's frameless-window edges: n, s, e, w, ne, nw, se, sw.
@@ -642,6 +833,11 @@ fn resize_direction(edge: &str) -> Option<tao::window::ResizeDirection> {
 #[cfg(target_os = "macos")]
 fn open_url(url: &str) -> Result<(), String> {
     std::process::Command::new("open").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn open_url(url: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 // ShellExecute, not `cmd /C start`: cmd would run whatever follows an & in the URL.
@@ -689,6 +885,21 @@ fn load_custom(webview: &wry::WebView, settings: &serde_json::Value) {
     let html = custom_html(settings);
     let base = NSURL::URLWithString(&NSString::from_str("https://soundcloud.com/"));
     unsafe { webview.webview().loadHTMLString_baseURL(&NSString::from_str(&html), base.as_deref()) };
+}
+
+// As on macOS: our page under soundcloud.com's origin. WebKitGTK only; a
+// browser's window would need the page served to it (as Windows does).
+#[cfg(target_os = "linux")]
+fn load_custom(webview: &View, settings: &serde_json::Value) {
+    use webkit2gtk::WebViewExt;
+    use wry::WebViewExtUnix;
+    match webview {
+        View::Wry(v) => v.webview().load_html(&custom_html(settings), Some("https://soundcloud.com/")),
+        View::Browser(page) => {
+            eprintln!("custom ui: not available in a browser's window, loading soundcloud.com");
+            page.load(HOME);
+        }
+    }
 }
 
 // WebView2 can't load a string under a chosen origin (NavigateToString gives
@@ -784,6 +995,23 @@ fn snapshot(webview: &wry::WebView, path: String) {
     if let Err(e) = result {
         println!("[snap] failed: {e}");
     }
+}
+
+#[cfg(target_os = "linux")]
+fn snapshot(webview: &View, path: String) {
+    use webkit2gtk::{SnapshotOptions, SnapshotRegion, WebViewExt};
+    use wry::WebViewExtUnix;
+    let View::Wry(webview) = webview else { return println!("[snap] failed: not supported in a browser's window") };
+    webview.webview().snapshot(SnapshotRegion::Visible, SnapshotOptions::NONE, gtk::gio::Cancellable::NONE, move |result| {
+        let saved = result.map_err(|e| e.to_string()).and_then(|surface| {
+            let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+            surface.write_to_png(&mut file).map_err(|e| e.to_string())
+        });
+        match saved {
+            Ok(()) => println!("[snap] saved {path}"),
+            Err(e) => println!("[snap] failed: {e}"),
+        }
+    });
 }
 
 #[cfg(target_os = "macos")]
@@ -901,6 +1129,16 @@ fn data_dir() -> std::path::PathBuf {
 #[cfg(target_os = "windows")]
 fn data_dir() -> std::path::PathBuf {
     std::path::Path::new(&std::env::var("APPDATA").unwrap_or_default()).join("fairplay-spike")
+}
+
+// $XDG_DATA_HOME/fairplay-spike, usually ~/.local/share/fairplay-spike
+#[cfg(target_os = "linux")]
+fn data_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_DATA_HOME")
+        .filter(|d| !d.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(&std::env::var("HOME").unwrap_or_default()).join(".local/share"))
+        .join("fairplay-spike")
 }
 
 fn styles_path() -> std::path::PathBuf {

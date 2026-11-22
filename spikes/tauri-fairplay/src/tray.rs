@@ -70,3 +70,19 @@ pub fn set_dock_icon() {
         unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
     }
 }
+
+/// Whether the tray icon shows at all: on Linux it needs a StatusNotifier host
+/// on the session bus, which GNOME has only with an AppIndicator extension.
+pub fn shown() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::gio;
+        use gtk::glib::{ToVariant, Variant};
+        let Ok(bus) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else { return false };
+        let args = ("org.kde.StatusNotifierWatcher",).to_variant();
+        let reply = bus.call_sync(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner", Some(&args), None, gio::DBusCallFlags::NONE, 1000, gio::Cancellable::NONE);
+        return reply.ok().and_then(|v: Variant| v.child_value(0).get::<bool>()).unwrap_or(false);
+    }
+    #[cfg(not(target_os = "linux"))]
+    true
+}
