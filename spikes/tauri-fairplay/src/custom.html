@@ -126,6 +126,11 @@
   .fullHero .soundTitle__username.g-type-shrinkwrap-inline { display: -webkit-inline-box; padding: 4px 8px; }
   /* SoundCloud's pointer comes from .soundTitle.m-interactive and .waveform, which the playlist hero lacks */
   .fullHero .sc-button-play, canvas[data-hero] { cursor: pointer; }
+  /* the hero waveform's times, at its baseline (70% down), as SoundCloud's */
+  .pocWaveTime { position: absolute; top: 70%; transform: translateY(-100%); z-index: 2; padding: 0 3px; background: #000; color: #ccc; font-size: 11px; line-height: 15px; pointer-events: none; }
+  .pocWaveTime:empty { display: none; }
+  .pocWaveTime--at { left: 0; color: #f50; }
+  .pocWaveTime--dur { right: 0; }
   /* the playing row of a playlist, as SoundCloud colours it */
   .trackItem.active .trackItem__trackTitle, .trackItem.active .trackItem__number { color: #f50 !important; }
   .pocGoPlus { display: inline-block; padding: 1px 5px; border-radius: 3px; background: linear-gradient(90deg, #ff4d73, #d81b60); color: #fff; font: 700 11px/16px sans-serif; vertical-align: middle; }
@@ -1298,7 +1303,7 @@
           <div class="soundTitle__usernameTitleContainer sc-mb-0.5x"><div class="soundTitle__titleHeroContainer"><h1 class="sc-text-h1 soundTitle__title sc-font g-type-shrinkwrap-inline theme-dark"><span>${esc(p.title)}</span></h1></div>
             <div class="soundTitle__usernameHeroContainer"><h2 class="soundTitle__username sc-text-h3 g-opacity-transition-500 g-type-shrinkwrap-inline theme-dark">${link(u.permalink || '', 'sc-link-secondary', esc(u.username || p.short_description || '') + (u.verified ? ` <div style="display:inline-block"><span class="verifiedBadge soundTitle__usernameHeroContainer__verifiedBadge sc-ml-1x theme-light">${icon('verified')}</span></div>` : ''))}</h2></div></div></div></div></div>
         <div class="fullHero__info">${p.last_modified ? `<div class="fullHero__uploadTime sc-type-medium sc-text-body sc-mb-1x theme-dark sc-text-primary">Updated <time class="relativeTime">${ago(p.last_modified)}</time></div>` : ''}${p.genre ? tag(p.genre, 'large') : ''}</div>
-        <div class="fullHero__playerArea"><div class="fullHero__waveform"><div class="waveformWrapper"><div class="waveformWrapper__waveform"><canvas data-hero data-ids="${tracks.map(t => t.id).join(',')}" style="width:100%;height:100%;display:block"></canvas></div></div></div></div>
+        <div class="fullHero__playerArea"><div class="fullHero__waveform"><div class="waveformWrapper"><div class="waveformWrapper__waveform"><canvas data-hero data-ids="${tracks.map(t => t.id).join(',')}" style="width:100%;height:100%;display:block"></canvas><span class="pocWaveTime pocWaveTime--at" id="setWaveAt"></span><span class="pocWaveTime pocWaveTime--dur" id="setWaveDur"></span></div></div></div></div>
         <div class="fullHero__tracksSummary"><div class="playlistTrackCount sc-font"><div class="genericTrackCount sc-font theme-dark sc-pt-2x sc-text-primary m-active" title="${p.track_count ?? tracks.length} tracks"><div class="genericTrackCount__title sc-text-h1">${p.track_count ?? tracks.length}</div><div class="genericTrackCount__subtitle sc-text-h5">Tracks</div><div class="sc-pt-0.5x"></div><div class="genericTrackCount__duration sc-type-small sc-type-light sc-text-secondary sc-text-h5">${hms(total)}</div></div></div></div>
       </div></div></div>
     <div class="l-listen-wrapper"><div class="l-about-main"><div class="l-about-rows">
@@ -1322,7 +1327,7 @@
           <div class="listenDetails__trackList"><div class="trackList"><ul class="trackList__list sc-clearfix sc-list-nostyle" id="plist"></ul></div></div>
         </div></div></div></div></div>
       <div class="l-sidebar-right" id="setSidebar"></div></div>`;
-    $('setPlay').onclick = () => pairs[0] && toggleOrPlay(pairs[0][1]);
+    $('setPlay').onclick = () => { const at = pairs.find(([t]) => t.id === current()?.id) || pairs[0]; if (at) toggleOrPlay(at[1]); };
     $('setEdit')?.addEventListener('click', () => openEditPlaylist(p, tracks, cover));
     $('plist').append(...pairs.map(([t, i], n) => {
       const li = document.createElement('li');
@@ -1350,7 +1355,11 @@
     }));
     markPlaying();
     heroGradient(cover, $('setGradient'));
-    { const c = document.querySelector('canvas[data-hero]'), cur = current(), at = pairs.find(([t]) => t.id === cur?.id); if (at) { c.closest('.fullHero').classList.remove('m-showTracksSummary'); drawWave(at[0], at[1], audio.duration ? audio.currentTime / audio.duration : 0, c); }
+    { const c = document.querySelector('canvas[data-hero]'), cur = current(), at = pairs.find(([t]) => t.id === cur?.id);
+      const hero = c.closest('.fullHero');
+      hero.pocSet = { cover };
+      paintSetHero();
+      if (at) { hero.classList.remove('m-showTracksSummary'); drawWave(at[0], at[1], audio.duration ? audio.currentTime / audio.duration : 0, c); }
       // it only shows while one of the playlist's tracks plays: a click seeks that track
       c.onclick = e => { if (pairs.some(([t]) => t.id === current()?.id)) seekTo(e.offsetX / c.clientWidth); }; }
     // the uploader, and the sidebar: their albums, who liked and reposted it
@@ -2096,12 +2105,18 @@
     const dpr = devicePixelRatio || 1, cw = Math.round((c.clientWidth || c.width / 2) * dpr), ch = Math.round((c.clientHeight || 60) * dpr);
     if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
     const g = c.getContext('2d'), W = c.width, H = c.height, pitch = 3 * dpr, bars = Math.floor(W / pitch), max = w.height || 140;
-    const paint = (color, from = 0, to = W) => {
-      g.fillStyle = color;
+    // A playlist hero's, as SoundCloud's: bars over a fainter reflection below
+    // a baseline 70% down, shaded orange where played, white ahead.
+    const hero = 'hero' in c.dataset, base = hero ? Math.round(H * 0.7) : H;
+    const shade = g.createLinearGradient(0, 0, 0, base);
+    shade.addColorStop(0, '#ff7a1a'); shade.addColorStop(1, '#ff3300');
+    const PLAYED = hero ? [shade, 'rgba(255, 120, 60, .5)'] : ['#f50'], AHEAD = hero ? ['#fff', 'rgba(255, 255, 255, .45)'] : ['#999'];
+    const paint = ([top, below], from = 0, to = W) => {
       for (let b = Math.max(0, Math.floor(from / pitch)); b < Math.min(bars, Math.ceil(to / pitch) + 1); b++) {
         const v = w.samples[Math.floor(b / bars * w.samples.length)] / max;
-        const h = Math.max(2 * dpr, v * H * 0.95), x = Math.round(b * pitch);
-        g.fillRect(x, H - h, Math.round(b * pitch + 2 * dpr) - x, h);
+        const h = Math.max(2 * dpr, v * base * 0.95), x = Math.round(b * pitch), wd = Math.round(b * pitch + 2 * dpr) - x;
+        g.fillStyle = top; g.fillRect(x, base - h, wd, h);
+        if (below) { g.fillStyle = below; g.fillRect(x, base + dpr, wd, Math.max(dpr, v * (H - base - dpr))); }
       }
     };
     // The played part is cut at the exact position, so the bar under the
@@ -2111,13 +2126,13 @@
     if (was && was.id === t.id && was.W === W && x >= was.x) {
       if (x === was.x) return;
       g.save(); g.beginPath(); g.rect(was.x, 0, x - was.x, H); g.clip();
-      paint('#f50', was.x, x);
+      paint(PLAYED, was.x, x);
       g.restore();
     } else {
       g.clearRect(0, 0, W, H);
-      paint('#999');
+      paint(AHEAD);
       g.save(); g.beginPath(); g.rect(0, 0, x, H); g.clip();
-      paint('#f50', 0, x);
+      paint(PLAYED, 0, x);
       g.restore();
     }
     c.playedTo = { id: t.id, W, x };
@@ -2144,7 +2159,27 @@
       const holder = el.querySelector('.pocPlayIcon');
       if (holder) holder.innerHTML = on ? TILE_PAUSE : icon('tilePlay');
     });
+    paintSetHero();
     renderQueue();
+  }
+  // A playlist page's hero, as SoundCloud's: while one of its tracks is the
+  // current one (playing or paused) it shows that track's artwork and colours
+  // (the title and artist stay the playlist's), and its button plays and
+  // pauses it; otherwise the playlist's artwork.
+  function paintSetHero() {
+    const c = document.querySelector('canvas[data-hero]'), hero = c?.closest('.fullHero');
+    if (!hero?.pocSet) return;
+    const t = current(), mine = !!t && c.dataset.ids.split(',').includes(String(t.id)), on = mine && !audio.paused;
+    const btn = $('setPlay').querySelector('.sc-button-play'), holder = $('setPlay').querySelector('.pocPlayIcon');
+    btn.classList.toggle('sc-button-pause', on);
+    btn.title = on ? 'Pause' : 'Play';
+    holder.innerHTML = on ? TILE_PAUSE : icon('soundPlay');
+    const showing = mine ? String(t.id) : 'set';
+    if (hero.dataset.showing === showing) return;
+    hero.dataset.showing = showing;
+    const cover = mine ? art(t, 't500x500') : hero.pocSet.cover;
+    hero.querySelector('.listenArtworkWrapper__artwork .image').innerHTML = artSpan(cover, 'sc-artwork-40x');
+    heroGradient(cover, $('setGradient'));
   }
   function paintPlayState() {
     $('toggleIcon').innerHTML = audio.paused ? icon('play') : PAUSE;
@@ -2399,7 +2434,11 @@
     const mine = hero && queue[i] && hero.dataset.ids.split(',').includes(String(queue[i].id));
     // as SoundCloud: the track count until one of its tracks plays, then that track's waveform
     hero?.closest('.fullHero').classList.toggle('m-showTracksSummary', !mine);
-    if (mine) drawWave(queue[i], i, t / audio.duration, hero);
+    if (mine) {
+      drawWave(queue[i], i, t / audio.duration, hero);
+      if ($('setWaveAt').textContent !== passed) $('setWaveAt').textContent = passed;
+      if ($('setWaveDur').textContent !== dur) $('setWaveDur').textContent = dur;
+    }
   }
   // timeupdate comes only a few times a second, which moves the bar and the
   // waveform in visible jumps; SoundCloud repaints every frame while playing.
