@@ -91,12 +91,13 @@ fn check(dir: &Path, target: &Path) -> Result<Option<(String, PathBuf)>, String>
     std::io::copy(&mut get(url)?.into_reader(), &mut file).map_err(|e| e.to_string())?;
     let out = work.join(version);
     unzip(&zip, &out)?;
-    // the app in the zip, whatever it's called (the installed copy may have been renamed)
+    // the app in the zip, whatever it's called (the installed copy may have been renamed);
+    // the Linux binary has no extension: the zip's one file
     let want = if cfg!(target_os = "macos") { "app" } else { "exe" };
     let new = std::fs::read_dir(&out)
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .find(|p| p.extension().is_some_and(|x| x == want))
+        .find(|p| if cfg!(target_os = "linux") { p.is_file() } else { p.extension().is_some_and(|x| x == want) })
         .ok_or_else(|| format!("no .{want} in the update"))?;
     verify(target, &new)?;
     Ok(Some((version.to_string(), new)))
@@ -132,8 +133,8 @@ fn verify(current: &Path, new: &Path) -> Result<(), String> {
         .map_err(|e| format!("update rejected, not signed like this app: {e}"))
 }
 
-// Note: the Windows build isn't signed yet, so this trusts HTTPS from
-// GitHub; check an Authenticode signature once the exe has one.
+// Note: the Windows and Linux builds aren't signed, so this trusts HTTPS from
+// GitHub; check a signature once they have one.
 #[cfg(not(target_os = "macos"))]
 fn verify(_current: &Path, _new: &Path) -> Result<(), String> {
     Ok(())
@@ -154,6 +155,12 @@ pub fn install(ready: &Ready) {
         eprintln!("updater: could not install: {e}");
         let _ = std::fs::rename(&old, &target);
         return;
+    }
+    // a zip made off Linux keeps no exec bit
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755));
     }
     let _ = remove(&old); // on Windows the old exe is still running: cleanup() gets it next time
     if let Some(work) = new.parent().and_then(Path::parent) {
