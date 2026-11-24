@@ -11,6 +11,11 @@ A desktop app for SoundCloud, for macOS, Windows and Linux.
 This started as a fork of [richardhbtz/soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) and has changed
 enough since that it now lives on its own.
 
+It is now a Rust client: a small Rust program around the system webview instead of Electron, using about 38% less
+memory while playing. Its builds are the `rust-v` pre-releases on the
+[releases](https://github.com/elricfd/sc-desktop/releases) page, and it updates itself; see
+[its README](spikes/tauri-fairplay/README.md). The Electron app described below still works and keeps its own releases.
+
 <img src="assets/preview/soundcloud-preview-dark.webp" alt="sc-desktop in dark mode" />
 
 | OLED theme                                                                             | Light mode                                                                                |

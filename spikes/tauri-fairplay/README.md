@@ -1,6 +1,6 @@
-# Rust client (work in progress)
+# Rust client
 
-An experiment in replacing the Electron app with something lighter: a small Rust program around the system webview,
+The replacement for the Electron app, and lighter: a small Rust program around the system webview,
 using [wry](https://github.com/tauri-apps/wry) and [tao](https://github.com/tauri-apps/tao) (WKWebView on macOS, WebView2
 on Windows). It shows soundcloud.com under its own title bar, like the Electron app does.
 
@@ -22,8 +22,8 @@ there the browser keeps its window frame, there is one tab, and closing the wind
 `webkit2gtk4.1`, `gtk3`, `libsoup3` and `libayatana-appindicator-gtk3` development packages.
 
 It already has the title bar with search suggestions, settings, Discord Rich Presence, Last.fm, ad blocking, downloads
-(yt-dlp), more than one account, a tray icon and updates. While playing it uses less than half the CPU of the
-Electron app, and less memory.
+(yt-dlp), more than one account, a tray icon and updates. On Windows it uses about 800 MB while playing against
+about 1,280 MB for the Electron app, at about the same CPU.
 
 ## Running it
 
@@ -50,7 +50,8 @@ codesign --force --sign "Apple Development: …" --identifier com.elricfd.fairpl
 (tagged `rust-v<version>`, marked as a pre-release so the Electron app's updater ignores it). On Windows,
 `.\release.ps1` builds the exe's zip, `-Install` puts it in `%LOCALAPPDATA%\Programs\SoundCloud` with a Start menu
 shortcut (it takes the Electron app's place, so uninstall that first), and `-Publish` adds the zip to the same release
-(whichever platform publishes first creates it). Bump `version` in `Cargo.toml` first. Installed copies check for those
+(whichever platform publishes first creates it). The Linux zip is built by GitHub Actions
+(`.github/workflows/rust-linux.yml`) when the release is published. Bump `version` in `Cargo.toml` first. Installed copies check for those
 releases at launch and every 6 hours and update themselves when you quit; a build run from `target/` never updates.
 
 ## Layout
