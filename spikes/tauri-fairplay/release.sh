@@ -49,7 +49,7 @@ if [[ ${1:-} == --publish ]]; then
   if gh release view "rust-v$version" -R elricfd/sc-desktop >/dev/null 2>&1; then
     gh release upload "rust-v$version" "$zip" -R elricfd/sc-desktop --clobber
   else
-    gh release create "rust-v$version" "$zip" -R elricfd/sc-desktop --target rust-client \
+    gh release create "rust-v$version" "$zip" -R elricfd/sc-desktop --target main \
       --prerelease --latest=false --title "Rust client $version" \
       --notes "Builds of the Rust client (spikes/tauri-fairplay). Installed copies update themselves."
   fi
