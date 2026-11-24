@@ -635,7 +635,7 @@
     net_bandcamp: '.web-profile[href*="bandcamp.com"] svg', net_tiktok: '.web-profile[href*="tiktok.com"] svg',
     net_personal: '.web-profile:not([href*="instagram.com"]):not([href*="twitter.com"]):not([href*="%2Fx.com"]):not([href*="youtube.com"]):not([href*="facebook.com"]):not([href*="spotify.com"]):not([href*="bandcamp.com"]):not([href*="tiktok.com"]) svg',
   };
-  const HARVEST_REV = 'r7'; // bump when the pages/icons collected change
+  const HARVEST_REV = 'r8'; // bump when the pages/icons collected change
   // SoundCloud keeps "notifications read up to" in this localStorage entry
   // ({activities: <uuid of the newest one seen>}); there's no server call.
   const NOTIFY_KEY = 'V2::local::notify';
@@ -656,6 +656,7 @@
       X.open = function (m) { this.__pocM = m; return oo.apply(this, arguments); };
       X.send = function () { if (ok(this.__pocM)) return os.apply(this, arguments); };
       if (w.navigator.sendBeacon) w.navigator.sendBeacon = () => true;
+      w.open = () => null; // nor popups (an about:blank "Sign in" window)
     };
     for (let path of ['/you/likes', '/search/sounds?q=music', '/feed', '/you/library', '/you/following', '/soundcloud', '@me', '/notifications', '/messages', '/discover', '/davidbowieofficial/sets/blackstar-4']) {
       if (path === '@me') { if (!me) continue; path = '/' + me.permalink; } // your own profile: the Edit button and your sidebar
@@ -731,7 +732,9 @@
     const form = body instanceof URLSearchParams; // sent form-encoded, as their Backbone models save
     if (body && !form) headers['Content-Type'] = 'application/json';
     const r = await fetch(u, { method, headers, body: form ? body : body && JSON.stringify(body) });
-    if (r.status === 401 && retry) { token = readToken(); await refreshFromSite(); return api(path, params, false, method, body); }
+    // SoundCloud's oauth_token lasts a day; loading their home page (in
+    // refreshFromSite) renews the cookie, so read it only after that.
+    if (r.status === 401 && retry) { await refreshFromSite(); token = readToken(); return api(path, params, false, method, body); }
     if (!r.ok) throw new Error(`${method} ${u.pathname} → ${r.status}`);
     return method === 'GET' ? r.json() : null;
   }
@@ -2360,8 +2363,15 @@
 
   // --- Timeline: track drags ourselves and seek once on release, so playback
   // updates never pull the handle back under the pointer.
+  // Restyled only when the bar moves a device pixel: every frame cost a
+  // style, layout and paint pass for nothing.
+  let barPx = -1;
   const setProgress = f => {
-    const pct = Math.min(100, Math.max(0, f * 100)) + '%';
+    f = Math.min(1, Math.max(0, f));
+    const px = Math.round(f * $('timeline').clientWidth * devicePixelRatio);
+    if (px === barPx) return;
+    barPx = px;
+    const pct = f * 100 + '%';
     $('bar').style.width = pct; $('handle').style.left = pct;
   };
   function seekTo(f) {
@@ -3010,12 +3020,19 @@
   (async () => {
     applyAssets(store.get('assets'));
     // SoundCloud's stylesheets before anything is shown, the sign-in page too
-    // (a first launch, signed out, has none stored yet)
-    await refreshFromSite().catch(e => log('asset refresh failed: ' + e.message));
+    // (a first launch, signed out, has none stored yet). Once the key and
+    // stylesheets are cached, check for new ones in the background: it fetches
+    // their home page and a 3 MB bundle, which held up every launch.
+    const fresh = refreshFromSite().catch(e => log('asset refresh failed: ' + e.message));
+    if (!clientId || !store.get('assets')) await fresh;
     if (!token) return go('signin');
-    const version = HARVEST_REV + ' ' + (store.get('assets')?.css || []).join(' ');
-    if (window.__scStylesVersion !== version || !ICONS.play) harvest(version).catch(e => log('harvest failed: ' + e.message));
     me = await api('/me');
+    // only once signed in: collected without `me`, it skips your own profile
+    // (the Edit button, your sidebar) and saves styles missing them
+    fresh.then(() => {
+      const version = HARVEST_REV + ' ' + (store.get('assets')?.css || []).join(' ');
+      if (window.__scStylesVersion !== version || !ICONS.play) harvest(version).catch(e => log('harvest failed: ' + e.message));
+    });
     // the account list shows its name and avatar
     const mine = { name: me.username, avatar: me.avatar_url || '' };
     Object.assign(accounts.accounts.find(a => a.id === accounts.current) || {}, mine);
@@ -3032,6 +3049,7 @@
     setInterval(() => checkUnread().catch(() => {}), 60000);
     paintNav();
     await route();
+    log(`first page shown ${Math.round(performance.now())} ms after load`);
   })().catch(e => status('Error: ' + e.message));
 })();
 </script>
