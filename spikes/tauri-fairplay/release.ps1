@@ -35,7 +35,8 @@ if ($Install) {
 
 if ($Publish) {
     $tag = "rust-v$version"
-    gh release view $tag -R elricfd/sc-desktop *> $null
+    # (through cmd: PowerShell 5.1 stops on gh's "release not found" on stderr)
+    cmd /c "gh release view $tag -R elricfd/sc-desktop >nul 2>&1"
     if ($LASTEXITCODE) {
         gh release create $tag $zip -R elricfd/sc-desktop --target rust-client --prerelease --latest=false `
             --title "Rust client $version" --notes "Builds of the Rust client (spikes/tauri-fairplay). Installed copies update themselves."
