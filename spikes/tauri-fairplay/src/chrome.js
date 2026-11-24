@@ -61,6 +61,16 @@
       .playControls__wrapper.l-container, body.crossfade-iframe-active #app .l-container { width: auto !important; }
       body.crossfade-iframe-active { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
     }
+    /* Under 960 px the page scrolled sideways: the right sidebar goes, the feed fills the window. */
+    @media (max-width: 959px) {
+      #app .l-container { width: auto !important; }
+      .l-fluid-fixed .l-sidebar-right { display: none; }
+      .l-fluid-fixed .l-main { margin-right: 0; padding-left: 16px; padding-right: 16px; }
+    }
+    /* A track's plays/comments sat over its buttons (more of them with ours): they wrap below instead. */
+    .sound__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 8px; }
+    .sound__footer .sound__soundActions { float: none; }
+    .sound__footer .sound__footerRight { position: static; margin-left: auto; }
 
     /* ---- Title bar: the Electron app's header (src/header/header.css), under
        a transparent macOS title bar; the traffic lights sit in the 80px on the left. ---- */
