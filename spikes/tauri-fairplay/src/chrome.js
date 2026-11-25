@@ -61,11 +61,12 @@
       .playControls__wrapper.l-container, body.crossfade-iframe-active #app .l-container { width: auto !important; }
       body.crossfade-iframe-active { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
     }
-    /* Under 960 px the page scrolled sideways: the right sidebar goes, the feed fills the window. */
-    @media (max-width: 959px) {
-      #app .l-container { width: auto !important; }
-      .l-fluid-fixed .l-sidebar-right { display: none; }
-      .l-fluid-fixed .l-main { margin-right: 0; padding-left: 16px; padding-right: 16px; }
+    /* Their 960 px page scrolled sideways under 960: it follows the window down
+       to 840 instead, with the right sidebar 300 px for its 360, and scrolls below that. */
+    @media (max-width: 1079px) {
+      #app .l-container.l-content { width: auto !important; min-width: 840px; margin-left: 16px; margin-right: 16px; }
+      .l-fluid-fixed .l-sidebar-right, .l-fluid-fixed .l-sidebar-right > * { width: 300px !important; box-sizing: border-box; }
+      .l-fluid-fixed .l-main { margin-right: 300px !important; }
     }
     /* A track's plays/comments sat over its buttons (more of them with ours): they wrap below instead. */
     .sound__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 8px; }
