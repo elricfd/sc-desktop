@@ -1,6 +1,6 @@
 [package]
 name = "fairplay-spike"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
@@ -21,6 +21,9 @@ objc2-web-kit = { version = "0.3.2", features = ["WKWebView", "WKWebViewConfigur
 objc2-app-kit = { version = "0.3.2", features = ["NSImage", "NSBitmapImageRep", "NSImageRep", "NSApplication", "NSResponder"] }
 muda = "0.21.2"
 keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Same versions as wry, for the WebView2 APIs it doesn't wrap.

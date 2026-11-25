@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Builds SoundCloud.app (macOS; it replaces the Electron app of the same name),
-# signed with the Apple Development identity, and its update zip in
-# target/release/bundle. With --publish it also makes the
+# signed with the Apple Development identity, its update zip and a .dmg to
+# install from in target/release/bundle. With --publish it also makes the
 # GitHub release the updater reads (src/updater.rs): tag rust-v<version>,
 # a pre-release, never "latest", so the Electron app's updater ignores it.
 # Bump `version` in Cargo.toml first.
@@ -13,6 +13,7 @@ arch=$(uname -m | sed 's/arm64/aarch64/')
 out=target/release/bundle
 app="$out/SoundCloud.app"
 zip=$out/soundcloud-rust-$version-macos-$arch.zip
+dmg=$out/soundcloud-rust-$version-macos-$arch.dmg
 
 cargo build --release
 rm -rf "$out" && mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -42,14 +43,20 @@ identity=$(security find-identity -v -p codesigning | grep -o '"Apple Developmen
 codesign --force --sign "$identity" --identifier com.elricfd.fairplay-spike "$app"
 codesign --verify --deep --strict "$app"
 ditto -c -k --keepParent "$app" "$zip"
-echo "built $app and $zip"
+# the one file to install from: the app beside a link to Applications
+stage=$(mktemp -d)
+ditto "$app" "$stage/SoundCloud.app"
+ln -s /Applications "$stage/Applications"
+hdiutil create -quiet -ov -volname SoundCloud -srcfolder "$stage" -format UDZO "$dmg"
+rm -rf "$stage"
+echo "built $app, $zip and $dmg"
 
 if [[ ${1:-} == --publish ]]; then
   # release.ps1 may have made the release already with the Windows zip
   if gh release view "rust-v$version" -R elricfd/sc-desktop >/dev/null 2>&1; then
-    gh release upload "rust-v$version" "$zip" -R elricfd/sc-desktop --clobber
+    gh release upload "rust-v$version" "$zip" "$dmg" -R elricfd/sc-desktop --clobber
   else
-    gh release create "rust-v$version" "$zip" -R elricfd/sc-desktop --target main \
+    gh release create "rust-v$version" "$zip" "$dmg" -R elricfd/sc-desktop --target main \
       --prerelease --latest=false --title "Rust client $version" \
       --notes "Builds of the Rust client (spikes/tauri-fairplay). Installed copies update themselves."
   fi

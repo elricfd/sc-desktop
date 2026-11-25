@@ -9,6 +9,11 @@
 // override it). UI=custom swaps SoundCloud's site for our own page
 // (custom.html), which talks to SoundCloud's API and plays streams itself.
 // Each stdin line is JavaScript run in the page, so tests can drive it.
+
+// Windows: no console window behind the app (closing it killed the app). Piped
+// stdin/stdout still work; a debug build keeps its console.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod accounts;
 mod adblock;
 #[cfg(target_os = "linux")]
@@ -147,6 +152,8 @@ fn soundcloud_url(url: &str) -> bool {
 fn main() -> wry::Result<()> {
     #[cfg(target_os = "linux")]
     goplus::prepare_env();
+    #[cfg(target_os = "linux")]
+    appimage_launcher();
     let settings = load_settings();
     let setting = |k: &str| settings[k].as_bool().unwrap_or(true);
     let on = |k: &str, default: bool| std::env::var(k).map(|v| v != "0").unwrap_or(default);
@@ -166,6 +173,13 @@ fn main() -> wry::Result<()> {
 
     let event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     let proxy = event_loop.create_proxy();
+    #[cfg(not(target_os = "macos"))]
+    {
+        let p = proxy.clone();
+        if already_running(move || drop(p.send_event(Ev::Tray(tray::Action::Show)))) {
+            return Ok(());
+        }
+    }
     for id in accounts::prune(&data_dir()) {
         let _ = proxy.send_event(Ev::RemoveStore(id));
     }
@@ -1183,6 +1197,77 @@ fn data_dir() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(&std::env::var("HOME").unwrap_or_default()).join(".local/share"))
         .join("fairplay-spike")
+}
+
+/// Run as an AppImage: a launcher in the app grid, with our icon, for wherever
+/// the file is now. That is the AppImage's whole install.
+#[cfg(target_os = "linux")]
+fn appimage_launcher() {
+    let Some(appimage) = std::env::var_os("APPIMAGE") else { return };
+    let (dir, icon) = (data_dir(), data_dir().join("icon.png"));
+    let Some(share) = dir.parent() else { return };
+    let entry = format!(
+        "[Desktop Entry]
+Type=Application
+Name=SoundCloud
+Exec=\"{}\"
+Icon={}
+Categories=AudioVideo;Audio;Music;
+StartupWMClass=fairplay-spike
+Terminal=false
+",
+        appimage.to_string_lossy(),
+        icon.display()
+    );
+    let path = share.join("applications/soundcloud-rust-appimage.desktop");
+    if std::fs::read_to_string(&path).is_ok_and(|old| old == entry) {
+        return;
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(&icon, include_bytes!("icons/app.png"));
+    let _ = std::fs::create_dir_all(share.join("applications"));
+    let _ = std::fs::write(&path, entry);
+}
+
+/// One app per data folder: a second launch (the Start menu while we sit in
+/// the tray) has the first show its window, and returns true. The first
+/// listens on a local port, kept in the `instance` file. MULTI=1 starts anyway.
+#[cfg(not(target_os = "macos"))]
+fn already_running(show: impl Fn() + Send + 'static) -> bool {
+    use std::io::{Read, Write};
+    use std::net::{Ipv4Addr, TcpListener, TcpStream};
+    const ASK: &[u8; 16] = b"sc-desktop show
+";
+    let file = data_dir().join("instance");
+    let port = std::fs::read_to_string(&file).ok().and_then(|p| p.trim().parse::<u16>().ok()).filter(|_| std::env::var_os("MULTI").is_none());
+    if let Some(mut first) = port.and_then(|p| TcpStream::connect((Ipv4Addr::LOCALHOST, p)).ok()) {
+        // Windows lets only the app just launched (us) hand over the foreground
+        #[cfg(windows)]
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow};
+            let _ = AllowSetForegroundWindow(ASFW_ANY);
+        }
+        let _ = first.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        let mut reply = [0; 2];
+        // anything else on a stale port doesn't answer "ok"
+        if first.write_all(ASK).is_ok() && first.read_exact(&mut reply).is_ok() && &reply == b"ok" {
+            return true;
+        }
+    }
+    let Ok(listener) = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)) else { return false };
+    let _ = std::fs::create_dir_all(data_dir());
+    let _ = std::fs::write(&file, listener.local_addr().map(|a| a.port().to_string()).unwrap_or_default());
+    std::thread::spawn(move || {
+        for mut other in listener.incoming().flatten() {
+            let _ = other.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let mut ask = [0; 16];
+            if other.read_exact(&mut ask).is_ok() && &ask == ASK {
+                let _ = other.write_all(b"ok");
+                show();
+            }
+        }
+    });
+    false
 }
 
 fn styles_path() -> std::path::PathBuf {

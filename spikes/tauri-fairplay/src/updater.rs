@@ -2,7 +2,8 @@
 // for a newer release at launch and every 6 hours, download it in the
 // background, and swap it in when the app quits. Releases of this client are
 // the GitHub releases tagged `rust-v<version>` (pre-releases, so the Electron
-// app's updater never sees them), with a zip per platform made by release.sh.
+// app's updater never sees them), with a zip per platform made by release.sh
+// (and an AppImage, which updates from that instead).
 // macOS installs a download only if it carries the running app's own code
 // signature. Only a packaged app updates (SoundCloud.app on macOS, the exe
 // on Windows); a dev binary in target/ never does.
@@ -17,12 +18,23 @@ pub type Ready = Arc<Mutex<Option<PathBuf>>>;
 
 fn asset_name() -> String {
     let os = if cfg!(target_os = "macos") { "macos" } else if cfg!(target_os = "linux") { "linux" } else { "windows" };
-    format!("{os}-{}.zip", std::env::consts::ARCH)
+    // an AppImage updates from the release's AppImage, everything else from the zip
+    let ext = if appimage().is_some() { "AppImage" } else { "zip" };
+    format!("{os}-{}.{ext}", std::env::consts::ARCH)
 }
 
-/// What gets replaced: the .app bundle on macOS, the exe on Windows. None for
-/// a dev build (no bundle around it, or still under target/).
+/// The AppImage file we were started from (Linux).
+fn appimage() -> Option<PathBuf> {
+    if cfg!(target_os = "linux") { std::env::var_os("APPIMAGE").map(PathBuf::from) } else { None }
+}
+
+/// What gets replaced: the .app bundle on macOS, the exe on Windows, the
+/// AppImage or the binary on Linux. None for a dev build (no bundle around it,
+/// or still under target/).
 fn installed() -> Option<PathBuf> {
+    if let Some(file) = appimage() {
+        return Some(file);
+    }
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
     if exe.components().any(|c| c.as_os_str() == "target") {
         return None;
@@ -86,11 +98,16 @@ fn check(dir: &Path, target: &Path) -> Result<Option<(String, PathBuf)>, String>
     let work = dir.join("update");
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    let zip = work.join("update.zip");
-    let mut file = std::fs::File::create(&zip).map_err(|e| e.to_string())?;
-    std::io::copy(&mut get(url)?.into_reader(), &mut file).map_err(|e| e.to_string())?;
     let out = work.join(version);
-    unzip(&zip, &out)?;
+    if appimage().is_some() {
+        // the download is the file to install
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        download(url, &out.join("SoundCloud.AppImage"))?;
+    } else {
+        let zip = work.join("update.zip");
+        download(url, &zip)?;
+        unzip(&zip, &out)?;
+    }
     // the app in the zip, whatever it's called (the installed copy may have been renamed);
     // the Linux binary has no extension: the zip's one file
     let want = if cfg!(target_os = "macos") { "app" } else { "exe" };
@@ -103,7 +120,14 @@ fn check(dir: &Path, target: &Path) -> Result<Option<(String, PathBuf)>, String>
     Ok(Some((version.to_string(), new)))
 }
 
+fn download(url: &str, to: &Path) -> Result<(), String> {
+    let mut file = std::fs::File::create(to).map_err(|e| e.to_string())?;
+    std::io::copy(&mut get(url)?.into_reader(), &mut file).map(|_| ()).map_err(|e| e.to_string())
+}
+
 fn run(cmd: &mut std::process::Command) -> Result<String, String> {
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(cmd, 0x0800_0000); // CREATE_NO_WINDOW
     let out = cmd.output().map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
     if out.status.success() { Ok(text) } else { Err(text.trim().to_string()) }

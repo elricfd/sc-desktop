@@ -101,7 +101,8 @@ pub fn prune(dir: &Path) -> Vec<String> {
 /// the caller exit.
 pub fn relaunch() {
     if let Ok(exe) = std::env::current_exe() {
-        let _ = std::process::Command::new(exe).args(std::env::args().skip(1)).spawn();
+        // MULTI: this copy is still running when the new one starts
+        let _ = std::process::Command::new(exe).args(std::env::args().skip(1)).env("MULTI", "1").spawn();
     }
 }
 

@@ -1,5 +1,6 @@
-# Linux zip of the Rust client (spikes/tauri-fairplay) for its rust-v<version>
-# release; Windows and macOS zips come from release.ps1 / release.sh.
+# Linux builds of the Rust client (spikes/tauri-fairplay) for its rust-v<version>
+# release: an AppImage to install from and the binary's zip. Windows and macOS
+# builds come from release.ps1 / release.sh.
 name: Rust client Linux
 
 on:
@@ -26,14 +27,41 @@ jobs:
             GH_TOKEN: ${{ github.token }}
         steps:
             - uses: actions/checkout@v4
-            - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libgstreamer1.0-dev libunwind-dev libayatana-appindicator3-dev
+            - run:
+                  sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libgstreamer1.0-dev
+                  libunwind-dev libayatana-appindicator3-dev xvfb
             - run: rustup update stable --no-self-update
             - run: cargo build --release --locked
-            - name: Upload to the release
+            - name: Zip and AppImage
               run: |
                   version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-                  zip=soundcloud-rust-$version-linux-x86_64.zip
-                  zip -j "$zip" target/release/fairplay-spike
+                  name=soundcloud-rust-$version-linux-x86_64
+                  echo "version=$version" >> "$GITHUB_ENV"
+                  echo "name=$name" >> "$GITHUB_ENV"
+                  zip -j "$name.zip" target/release/fairplay-spike
+                  # ponytail: WebKitGTK 4.1 and GStreamer come from the system, not the AppImage;
+                  # bundle them (linuxdeploy's gtk plugin) if distros without them matter
+                  install -Dm755 target/release/fairplay-spike AppDir/usr/bin/fairplay-spike
+                  ln -s usr/bin/fairplay-spike AppDir/AppRun
+                  cp ../../assets/icons/soundcloud.svg AppDir/soundcloud-rust.svg
+                  printf '[Desktop Entry]\nType=Application\nName=SoundCloud\nExec=fairplay-spike\nIcon=soundcloud-rust\nCategories=AudioVideo;Audio;Music;\nStartupWMClass=fairplay-spike\nTerminal=false\n' > AppDir/soundcloud-rust.desktop
+                  curl -sSfLo appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+                  echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool" | sha256sum -c
+                  chmod +x appimagetool
+                  ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir "$name.AppImage"
+            - name: The AppImage starts and adds its launcher
+              run: |
+                  code=0
+                  APPIMAGE_EXTRACT_AND_RUN=1 UPDATES=0 DISCORD=0 timeout 20 xvfb-run -a "./$name.AppImage" || code=$?
+                  test "$code" -eq 124 # still running when stopped
+                  grep "^Exec=\"$PWD/$name.AppImage\"" ~/.local/share/applications/soundcloud-rust-appimage.desktop
+            # to try a build before its release: the run's Artifacts
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: soundcloud-rust-linux
+                  path: spikes/tauri-fairplay/soundcloud-rust-*-linux-x86_64.*
+            - name: Upload to the release
+              run: |
                   # the release is made by release.ps1 / release.sh; none yet, nothing to add to
                   gh release view "rust-v$version" >/dev/null 2>&1 || { echo "no release rust-v$version"; exit 0; }
-                  gh release upload "rust-v$version" "$zip" --clobber
+                  gh release upload "rust-v$version" "$name.zip" "$name.AppImage" --clobber

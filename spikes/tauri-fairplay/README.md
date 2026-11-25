@@ -25,6 +25,27 @@ It already has the title bar with search suggestions, settings, Discord Rich Pre
 (yt-dlp), more than one account, a tray icon and updates. On Windows it uses about 800 MB while playing against
 about 1,280 MB for the Electron app, at about the same CPU.
 
+## Installing
+
+Each [`rust-v` release](https://github.com/elricfd/sc-desktop/releases) has one file to install from per platform. The
+app then keeps itself up to date.
+
+- **Windows:** run `soundcloud-rust-<version>-windows-x86_64-setup.exe`. It installs for your user, without admin
+  rights, and adds SoundCloud to the Start menu and to Windows' installed apps. From a terminal, `/VERYSILENT` installs
+  without any window.
+- **macOS (Apple Silicon):** open `soundcloud-rust-<version>-macos-aarch64.dmg` and drag SoundCloud to Applications. From
+  a terminal:
+
+    ```bash
+    hdiutil attach -nobrowse -quiet soundcloud-rust-*-macos-aarch64.dmg
+    ditto /Volumes/SoundCloud/SoundCloud.app /Applications/SoundCloud.app
+    hdiutil detach -quiet /Volumes/SoundCloud
+    ```
+
+- **Linux:** `chmod +x soundcloud-rust-*-linux-x86_64.AppImage` and run it. On its first run it adds a SoundCloud
+  launcher with its icon to the app grid. It uses the system's WebKitGTK 4.1 and GStreamer rather than carrying its own,
+  and has no Go+ (that needs `./install-linux.sh`, above).
+
 ## Running it
 
 You need [Rust](https://rustup.rs/).
@@ -35,6 +56,7 @@ cargo run --release
 
 The first time, sign in to SoundCloud in the window. A few environment variables help while working on it:
 `ADBLOCK=0`, `DISCORD=0`, `LASTFM=0` and `UPDATES=0` turn those parts off, and `TRACE=1` logs media and DRM events.
+Opening the app while it is already running shows that window instead; `MULTI=1` starts a second copy anyway.
 Each line on stdin runs as JavaScript in the page, which is handy for testing.
 
 On macOS, sign the binary (any Apple Development certificate) so the Keychain remembers its Last.fm items between
@@ -46,11 +68,12 @@ codesign --force --sign "Apple Development: …" --identifier com.elricfd.fairpl
 
 ## Releases
 
-`./release.sh` builds and signs `SoundCloud.app` and its zip; `./release.sh --publish` also creates the GitHub release
+`./release.sh` builds and signs `SoundCloud.app`, its update zip and its `.dmg`; `./release.sh --publish` also creates the GitHub release
 (tagged `rust-v<version>`, marked as a pre-release so the Electron app's updater ignores it). On Windows,
-`.\release.ps1` builds the exe's zip, `-Install` puts it in `%LOCALAPPDATA%\Programs\SoundCloud` with a Start menu
-shortcut (it takes the Electron app's place, so uninstall that first), and `-Publish` adds the zip to the same release
-(whichever platform publishes first creates it). The Linux zip is built by GitHub Actions
+`.\release.ps1` builds the installer (`installer.iss`; needs [Inno Setup](https://jrsoftware.org/isinfo.php),
+`winget install JRSoftware.InnoSetup`) and the update zip, `-Install` runs that installer silently (it takes the
+Electron app's place, so uninstall that first), and `-Publish` adds both to the same release
+(whichever platform publishes first creates it). The Linux AppImage and zip are built by GitHub Actions
 (`.github/workflows/rust-linux.yml`) when the release is published. Bump `version` in `Cargo.toml` first. Installed copies check for those
 releases at launch and every 6 hours and update themselves when you quit; a build run from `target/` never updates.
 
