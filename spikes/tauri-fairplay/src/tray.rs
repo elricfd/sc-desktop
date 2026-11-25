@@ -45,16 +45,18 @@ pub fn build(send: impl Fn(Action) + Send + Sync + 'static) -> TrayIcon {
         }
     }));
 
-    // macOS: a template image, drawn black or white to suit the menu bar.
     let icon = |png| {
         let (rgba, w, h) = rgba(png);
         tray_icon::Icon::from_rgba(rgba, w, h).unwrap()
     };
     let builder = TrayIconBuilder::new().with_tooltip("SoundCloud").with_menu(Box::new(menu)).with_menu_on_left_click(cfg!(target_os = "macos"));
+    // The SoundCloud logo, fitted to a square. macOS draws it as a template
+    // (black or white to suit the menu bar); Windows shows it white.
+    let logo = icon(include_bytes!("icons/tray.png"));
     #[cfg(target_os = "macos")]
-    let builder = builder.with_icon_templated(icon(include_bytes!("icons/tray-template.png")));
+    let builder = builder.with_icon_templated(logo);
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.with_icon(icon(include_bytes!("icons/tray-color.png")));
+    let builder = builder.with_icon(logo);
     builder.build().unwrap()
 }
 
